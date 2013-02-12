@@ -1,5 +1,4 @@
 import math
-import matplotlib.pyplot as plt
 
 
 debug = False
@@ -375,7 +374,4 @@ if __name__ == '__main__':
     vehicle = Vehicle(v, m, 30000.)
     vehicle.flyMission()
     vehicle.write()
-    #plt.figure()
-    #plt.plot(vehicle.speeds, vehicle.powers)
-    #plt.show()
     
