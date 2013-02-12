@@ -1,0 +1,51 @@
+[Main Rotor]
+NumRotors = integer()
+DiskLoading = float()
+Solidity = float()
+TipSpeed = float()
+Kint = float()
+Kov = float()
+HeliEfficiency = float()
+CD0 = float()
+TipLossFactor = float()
+
+[Weights]
+BaselineGrossWeight = float()
+BaselineEmptyWeightFraction = float()
+BaselineEmptyWeight = float()
+NumEngines = float()
+BaselineWeightPerEngine = float()
+BaselineDriveSystemWeightScalingFactor = float()
+StructureWeightTechImprovementFactor = float()
+EngineWeightTechImprovementFactor = float()
+DriveSystemWeightTechImprovementFactor = float()
+WingWeightTechImprovementFactor = float()
+UsefulLoad = float()
+
+[Wing]
+SpanRadiusRatio = float()
+WingAspectRatio = float()
+MaxSpeed = float()
+WingClMax = float()
+WingCD0 = float()
+OswaldEfficiency = float()
+
+[Aux Propulsion]
+PropEfficiency = float()
+
+[Powerplant]
+BaselineMRP = float()
+BaselineSFC = float()
+SFCTechImprovementFactor = float()
+
+[Body]
+DragTechImprovementFactor = float()
+
+[Simulation]
+TimeStep = float()
+MaxSteps = float()
+StartGW = float()
+GWMin = float()
+GWmax = float()
+GWTolerance = float()
+UseBEMT = boolean()

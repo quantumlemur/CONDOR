@@ -1,0 +1,11 @@
+TotalTime = float()
+
+[__many__]
+Distance = float()
+Speed = float()
+Altitude = float()
+Density = float()
+DeltaTemp = float()
+CrewWeight = float()
+PayloadWeight = float()
+MiscWeight = float()
