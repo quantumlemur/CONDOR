@@ -38,6 +38,9 @@ def pvar(locals_, vars_):
 
 
 class Blade:
+    # This is a very simple class intended to just hold the configuration for a single blade.
+    # Broken down into radial pieces, and with the c81 file read in and interpolation splines
+    # generated so that cl, cd, etc. can be returned easily later.
     
     def __init__(self, c81File, radius, chord, skip_header=0, skip_footer=0, taper=0, twist=0, cutout=0, pitch=0, segments=15):
         self.radius = radius
@@ -85,6 +88,7 @@ class Blade:
 
 
 class Rotor:
+    """This class holds the rotor and actually deals with trimming it and whatnot."""
     
     def __init__(self, blade, psiSegments, omega):
         self.blade = blade
