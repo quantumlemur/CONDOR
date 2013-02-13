@@ -26,7 +26,7 @@
 
 
 
-import math as m
+import math
 import numpy as np
 from scipy import interpolate
 
@@ -42,13 +42,13 @@ class Blade:
     # Broken down into radial pieces, and with the c81 file read in and interpolation splines
     # generated so that cl, cd, etc. can be returned easily later.
     
-    def __init__(self, c81File, radius, chord, skip_header=0, skip_footer=0, taper=0, twist=0, cutout=0, pitch=0, segments=15):
+    def __init__(self, c81File, chord, skip_header=0, skip_footer=0, taper=0, twist=0, cutout=0, pitch=0, segments=15):
         self.radius = radius
         airfoildata = np.genfromtxt(c81File, skip_header=skip_header, skip_footer=skip_footer) # read in the airfoil file
         # generate the airfoil data splines.  They are assumed to be in degrees, and are converted to radians
-        self.clspl = interpolate.splrep(airfoildata[:,0]*m.pi/180, airfoildata[:,1])
-        self.cdspl = interpolate.splrep(airfoildata[:,0]*m.pi/180, airfoildata[:,2])
-        self.cmspl = interpolate.splrep(airfoildata[:,0]*m.pi/180, airfoildata[:,3])
+        self.clspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,1])
+        self.cdspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,2])
+        self.cmspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,3])
         # generate the piecewise data on the blade
         endpoints, self.dr = np.linspace(cutout, 1, segments+1, retstep=True)
         self.r = np.zeros(endpoints.size - 1)
@@ -90,14 +90,15 @@ class Blade:
 class Rotor:
     """This class holds the rotor and actually deals with trimming it and whatnot."""
     
-    def __init__(self, blade, psiSegments, omega):
+    def __init__(self, blade, psiSegments, omega, radius):
         self.blade = blade
         self.omega = omega
         # set up the 2D arrays for psi, r, and L
-        psi1D, psistep = np.linspace(0, 2*m.pi, psiSegments, endpoint=False, retstep=True)
+        psi1D, psistep = np.linspace(0, 2*math.pi, psiSegments, endpoint=False, retstep=True)
         r1D = self.blade.r
         psi = np.zeros((psi1D.size, r1D.size))
         theta = np.zeros((psi1D.size, r1D.size))
+        chord = np.zeros((psi1D.size, r1D.size))
         r = np.zeros((psi1D.size, r1D.size))
         for i in range(r1D.size):
             psi[:,i] = psi1D
@@ -112,7 +113,6 @@ class Rotor:
         self.r = r
         self.theta = theta
         self.chord = chord
-        print psi
         self.Cl = Cl
     
     def setPitch(self, pitch):
@@ -131,12 +131,12 @@ class Rotor:
         
         # initialize the inflow, assuming uniform plus tip losses
         Clalpha = self.blade.a(alpha)
-        inflow = ct / (2. * solidity  # TODO: Finish writing equation from p.104
+        inflow = ct / (2. * solidity)  # TODO: Finish writing equation from p.104
         
         
         
         betadot = 0 # we're going to assume no flapping
-        beta = 5. * m.pi/180 # assume a 5deg precone for now.  Should this include alphaTPP and be a function of phi?
+        beta = 5. * math.pi/180 # assume a 5deg precone for now.  Should this include alphaTPP and be a function of phi?
         
         # I'm dimensionalizing these three after all:
         Ut = omega*r + mu*omega*r*np.sin(psi) #r + mu*np.sin(psi) # nondimensionalized.  Is really Ut/(omega*R).  Leishman eq 3.162
@@ -156,9 +156,13 @@ class Rotor:
         
         # stopped at page 116, on inflow models.  Also need to go back up and initialize the inflow before calculating the other stuff.  Should probably just put it at the top and iterate the whole thing.
     
-    def trim(self, tolerance, cttarget, mu):
+    def trim(self, tolerance, cttarget, mu, numblades):
         ct = cttarget
-        sigma = self.solidity
+        diskArea = math.pi * self.blade.radius**2
+        bladeArea = np.sum(self.blade.chord*self.blade.radius * self.blade.dr * numblades)
+        solidity = bladeArea / diskArea
+        print solidity
+
         lock = self.lockNumber
         twist = self.twist
         
@@ -193,10 +197,10 @@ class Rotor:
                 x**2*t1s*np.sin(psi) + 2./mu*x*t1s*np.sin(psi)**2 + t1s/mu**2*np.sin(psi)**3 - 
                 x*lambd - lambd/mu*np.sin(psi) - b0/mu*x**np.cos(psi) - b0/mu**2*np.cos(psi)*np.sin(psi))
         L[~np.isfinite(L)] = 0
-        b0 = lock/(2*m.pi) * np.sum(np.sum(L*x*rrstep)*psiistep)
-        roll = a/(2*m.pi**2)*np.sum(np.sum(L*x*np.sin(psi)*rrstep)*psiistep)
-        pitch = a/(2*m.pi**2)*np.sum(np.sum(L*x*np.cos(psi)*rrstep)*psiistep)
-        ct = a*sigma/(2*m.pi)*np.sum(np.sum(L*rrstep)*psiistep)
+        b0 = lock/(2*math.pi) * np.sum(np.sum(L*x*rrstep)*psiistep)
+        roll = a/(2*math.pi**2)*np.sum(np.sum(L*x*np.sin(psi)*rrstep)*psiistep)
+        pitch = a/(2*math.pi**2)*np.sum(np.sum(L*x*np.cos(psi)*rrstep)*psiistep)
+        ct = a*sigma/(2*math.pi)*np.sum(np.sum(L*rrstep)*psiistep)
         t0 = t0 + (cttarget - ct)
     
         # Loop until the rotor is trimmed
@@ -216,17 +220,17 @@ class Rotor:
                 + mu*((t0+twist*x)*np.sin(psi) + t1c*np.cos(psi)*np.sin(psi)
                 + t1s*np.sin(psi)**2 - b0*np.cos(psi)) - lambd)
             L = alpha*0.5*ut
-            b0 = lock/(2*m.pi) * np.sum(np.sum(L*x*rrstep)*psiistep)
-            roll = a/(2*m.pi**2)*np.sum(np.sum(L*x*np.sin(psi)*rrstep)*psiistep)
-            pitch = a/(2*m.pi**2)*np.sum(np.sum(L*x*np.cos(psi)*rrstep)*psiistep)
-            ct = a*sigma/(2*m.pi)*np.sum(np.sum(L*rrstep)*psiistep)
+            b0 = lock/(2*math.pi) * np.sum(np.sum(L*x*rrstep)*psiistep)
+            roll = a/(2*math.pi**2)*np.sum(np.sum(L*x*np.sin(psi)*rrstep)*psiistep)
+            pitch = a/(2*math.pi**2)*np.sum(np.sum(L*x*np.cos(psi)*rrstep)*psiistep)
+            ct = a*sigma/(2*math.pi)*np.sum(np.sum(L*rrstep)*psiistep)
             t0 = t0 + (cttarget - ct)
             t1s = t1s + pitch
             t1c = t1c - roll
-            print 'b0: %f     ct: %f     t0: %f     roll: %f     t1c: %f     pitch: %f     t1s: %f\n' % (b0*180/m.pi, ct, t0*180/m.pi, roll, t1c*180/m.pi, pitch, t1s*180/m.pi)
+            if debug: print 'b0: %f     ct: %f     t0: %f     roll: %f     t1c: %f     pitch: %f     t1s: %f\n' % (b0*180/math.pi, ct, t0*180/math.pi, roll, t1c*180/math.pi, pitch, t1s*180/math.pi)
             cthistory.append(ct)
             steps = steps + 1
-        print 'end\n'
+        if debug: print 'end\n'
 
     def plot(self):
         pass
@@ -240,8 +244,8 @@ if __name__ == '__main__':
     mu = V / Vtip
     r = 30. # feet
     omega = Vtip / r # rad/s
-    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, radius=30., chord=1., twist=-12.*m.pi/180, pitch=0.*m.pi/180, cutout=.2, segments=15)
-    r = Rotor(b, psiSegments=15, omega=omega)
-    Fhorizontal = 1./2 * rho * V^2 * f
+    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, chord=1./30, twist=-12.*math.pi/180, pitch=0.*math.pi/180, cutout=.2, segments=15)
+    r = Rotor(b, psiSegments=15, omega=omega, radius=30.)
+    Fhorizontal = 1./2 * rho * V**2 * f
     Fvertical = 15000. # pounds
-    r.BEM(tolerance=0.001, mu=mu, Fhorizontal=Fhorizontal, Fvertical=Fvertical)
+    r.trim(tolerance=0.001, cttarget=.12, mu=mu, numblades=4)
