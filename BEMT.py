@@ -33,52 +33,69 @@ from scipy import interpolate
 debug = True
 
 def pvar(locals_, vars_):
-    s = ['%s: %d' % (var, locals_[var]) for var in vars_]
+    s = ['%s: %f' % (var, locals_[var]) for var in vars_]
+    print '     '.join(s)
+
+def pdeg(locals_, vars_):
+    s = ['%s: %.2f' % (var*180./math.pi, locals_[var]) for var in vars_]
     print '     '.join(s)
 
 
 class Blade:
     # This is a very simple class intended to just hold the configuration for a single blade.
     # Broken down into radial pieces, and with the c81 file read in and interpolation splines
-    # generated so that cl, cd, etc. can be returned easily later.
+    # generated so that cl, cd, etc. can be returned easily later.  It will contain a
+    # non-dimensional blade, with everything referenced to a radius of 1.
     
-    def __init__(self, c81File, chord, skip_header=0, skip_footer=0, taper=0, twist=0, cutout=0, pitch=0, segments=15):
-        self.radius = radius
+    def __init__(self, c81File, rootChord, skip_header=0, skip_footer=0, taperRatio=1, tipTwist=0, rootCutout=0, segments=15):
         airfoildata = np.genfromtxt(c81File, skip_header=skip_header, skip_footer=skip_footer) # read in the airfoil file
         # generate the airfoil data splines.  They are assumed to be in degrees, and are converted to radians
         self.clspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,1])
         self.cdspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,2])
         self.cmspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,3])
         # generate the piecewise data on the blade
-        endpoints, self.dr = np.linspace(cutout, 1, segments+1, retstep=True)
+        endpoints, self.dr = np.linspace(rootCutout, 1, segments+1, retstep=True)
         self.r = np.zeros(endpoints.size - 1)
+        # set the r values as the midpoints of each segment
         for i in range(self.r.size):
             self.r[i] = (endpoints[i] + endpoints[i+1]) / 2
-        twistspl = interpolate.splrep(np.array([cutout,1])*radius, np.array([0,twist]), k=1)
+        # create the splines and store the twist and chord distribution
+        twistspl = interpolate.splrep(np.array([rootCutout,1]), np.array([0,tipTwist]), k=1)  # k=1 for linear interpolation
         self.twist = interpolate.splev(self.r, twistspl)
-        chordspl = interpolate.splrep(np.array([cutout,1])*radius, np.array([chord,chord*(1-taper)]), k=1)
+        chordspl = interpolate.splrep(np.array([rootCutout,1]), np.array([rootChord,rootChord*taperRatio]), k=1)  # k=1 for linear interpolation
         self.chord = interpolate.splev(self.r, chordspl)
-        # set the pitch
-        self.setPitch(pitch)
-    
+
     def cl(self, alpha):
-        return interpolate.splev(alpha, self.clspl)
+        shape = alpha.shape
+        alpha = np.reshape(alpha, alpha.size)
+        alpha = interpolate.splev(alpha, self.clspl)
+        alpha = np.reshape(alpha, shape)
+        return alpha
     
     def cd(self, alpha):
-        return interpolate.splev(alpha, self.cdspl)
+        shape = alpha.shape
+        alpha = np.reshape(alpha, alpha.size)
+        alpha = interpolate.splev(alpha, self.cdspl)
+        alpha = np.reshape(alpha, shape)
+        return alpha
     
     def cm(self, alpha):
-        return interpolate.splev(alpha, self.cmspl)
+        shape = alpha.shape
+        alpha = np.reshape(alpha, alpha.size)
+        alpha = interpolate.splev(alpha, self.cmspl)
+        alpha = np.reshape(alpha, shape)
+        return alpha
     
     def a(self, alpha):
-        return interpolate.splev(alpha, self.clspl, der=1)
-    
-    def setPitch(self, pitch):
-        self.pitch = pitch
-        self.theta = pitch + self.twist
-    
+        shape = alpha.shape
+        alpha = np.reshape(alpha, alpha.size)
+        alpha = interpolate.splev(alpha, self.clspl, der=1)
+        alpha = np.reshape(alpha, shape)
+        return alpha
+
+
     def write(self):
-        # right now this function just writes out some of the blade data to test the reading and interpolation routines
+        # right now this function just writes out some of the blade data to test the reading and interpolation routines.  Should remove it once the class is finalized.
         np.savetxt('Config/Blade.csv', np.transpose((self.r, self.theta)))
         alphas = np.arange(15)
         cl = self.cl(alphas)
@@ -88,75 +105,149 @@ class Blade:
 
 
 class Rotor:
-    """This class holds the rotor and actually deals with trimming it and whatnot."""
+    """This class holds the rotor and actually deals with trimming it and whatnot.
+
+    It contains dinensional quantities."""
     
-    def __init__(self, blade, psiSegments, omega, radius):
+    def __init__(self, blade, psiSegments, omega, radius, pitch, numblades):
         self.blade = blade
         self.omega = omega
-        # set up the 2D arrays for psi, r, and L
-        psi1D, psistep = np.linspace(0, 2*math.pi, psiSegments, endpoint=False, retstep=True)
+        self.radius = radius
+        self.R = radius
+        self.pitch = pitch
+        self.numblades = numblades
+        # set up 1D arrays of psi and r...
+        self.psi1D, psistep = np.linspace(0, 2*math.pi, psiSegments, endpoint=False, retstep=True)
         r1D = self.blade.r
-        psi = np.zeros((psi1D.size, r1D.size))
-        theta = np.zeros((psi1D.size, r1D.size))
-        chord = np.zeros((psi1D.size, r1D.size))
-        r = np.zeros((psi1D.size, r1D.size))
-        for i in range(r1D.size):
-            psi[:,i] = psi1D
-        for i in range(psi1D.size):
-            r[i,:] = r1D
-            theta[i,:] = blade.theta
-            chord[i,:] = blade.chord
-        Cl = np.zeros((psi1D.size, r1D.size))
-        self.psi1D = psi1D
-        self.r1D = r1D
-        self.psi = psi
-        self.r = r
-        self.theta = theta
-        self.chord = chord
-        self.Cl = Cl
+        # ...and convert them to 2D, plus chord and theta
+        self.r, self.psi = np.meshgrid(r1D, self.psi1D)
+        self.chord, self.psi = np.meshgrid(blade.chord, self.psi1D)
+        # dimensionalize some of the blade data
+        self.chord = self.blade.chord * radius
+        self.r = self.blade.r * radius
+        self.dr = self.blade.dr * radius
+        # set the pitch values
+        self.setPitch(pitch)
+        # precompute and store the values of sin(psi) and cos(psi) since they're static and we're going to use them a lot later on
+        self.cospsi = np.cos(self.psi)
+        self.sinpsi = np.sin(self.psi)
+        # initialize the trim variables such that they'll get set when we first try to trim
+        self.beta_0 = 9999999.
+        self.beta_1c = 9999999.
+        self.beta_1s = 9999999.
+        self.theta_1c = 9999999.
+        self.theta_1s = 9999999.
+        self.inflow = 9999999.
     
     def setPitch(self, pitch):
-        self.blade.setPitch(pitch)
-        for i in range(self.r1D.size):
-            self.theta[i,:] = self.blade.theta
+        self.pitch = pitch
+        theta1D = pitch + self.blade.twist
+        self.thetaFixed, psi = np.meshgrid(theta1D, self.psi1D)
+
+    def reinitializeTrimVars(self, Fx, Fz, rho, V):
+        # We'll just use .1 rad = 5.73 deg to initialize for now.  It'd be better to use closed-form estimates, but we'll add that later.
+        self.beta_0 = .1 # precone
+        self.beta_1c = .1
+        self.beta_1s = .1
+        self.theta_1c = .1
+        self.theta_1s = .1
+        # inflow calculations
+        self.alpha_tpp = math.tan(Fx/Fz)
+        thrust = math.sqrt(Fx**2 + Fz**2)
+        diskArea = math.pi * self.R**2
+        inflow = .1
+        change = 999.
+        while change>.01:
+            newinflow = thrust / (2.*rho*diskArea*math.sqrt((V*math.cos(self.alpha_tpp))**2 + (V*math.sin(self.alpha_tpp) + inflow)**2))
+            change = abs(newinflow - inflow) / inflow
+            inflow = newinflow
+        self.inflow = inflow
     
-    def BEM(self, tolerance, mu):
+    def trim(self, tolerance, V, speedOfSound, rho, Fx, Fy, Fz):
+        """Attempts to trim the rotor at given conditions.  Will re-use trim variables from last time if possible.
+        Note that "drag" and "weight" in the variables are really just the veritcal and horizontal components of
+        the force that the rotor is generating."""
         psi = self.psi
         r = self.r
-        theta = self.theta
+        R = self.R
         chord = self.chord
+        thetaFixed = self.thetaFixed
         omega = self.omega
-        R = self.blade.radius
-        dr = self.blade.dr
-        
-        # initialize the inflow, assuming uniform plus tip losses
-        Clalpha = self.blade.a(alpha)
-        inflow = ct / (2. * solidity)  # TODO: Finish writing equation from p.104
-        
-        
-        
-        betadot = 0 # we're going to assume no flapping
-        beta = 5. * math.pi/180 # assume a 5deg precone for now.  Should this include alphaTPP and be a function of phi?
-        
-        # I'm dimensionalizing these three after all:
-        Ut = omega*r + mu*omega*r*np.sin(psi) #r + mu*np.sin(psi) # nondimensionalized.  Is really Ut/(omega*R).  Leishman eq 3.162
-        Up = inflow*omega*r + r*betadot + mu*omega*r*beta*np.cos(psi) #inflow + r*betadot/omega + mu*beta*np.cos(psi) # nondimensionalized.  Is really Up/(omega*R).  Leishman eq 3.163
-        Ur = mu*omega*r*np.cos(psi) #mu*np.cos(psi) # nondimensionalized.  Is really Ur/(omega*R).  Leishman eq 3.164
-        
-        U = np.sqrt(Ut**2 + Up**2) # resultant velocity at blade element
-        phi = np.atan(Up/Ut) # induced angle of attack
-        alpha = theta - phi
-        Clalpha = self.blade.a(alpha)
-        dL = 1./2 * rho * chord * Clalpha * (theta * Ut**2 - Up*Ut) * dr  # should change this back to use Cl instead of Clalpha, since we can calculate it and don't need to assume constand Clalpha
-        Cd = self.blade.cd(alpha)
-        dD = 1./2 * rho * U**2 * chord * Cd * dr
-        # now resolve those forces perpendicular and parallel to rotor disk:
-        dFz = dL * np.cos(phi) - dD * np.sin*phi # can probably use a small-angle assumption to give dFz=dL
-        dFx = dL*np.sin(phi) + dD*np.cos(phi) # can probably use a small-angle assumption to give dFx=phi*dL+dDs
-        
-        # stopped at page 116, on inflow models.  Also need to go back up and initialize the inflow before calculating the other stuff.  Should probably just put it at the top and iterate the whole thing.
+        dr = self.dr
+        numblades = self.numblades
+        cospsi = self.cospsi
+        sinpsi = self.sinpsi
+        #alpha_TPP = math.tan(drag/weight) # tip path plane angle
+
+        # First we'll check if the pre-existing trim solution is reasonable. If not, re-initialize them.
+        if not((self.inflow<1000) and (self.beta_0>0) and (self.beta_0<math.pi/4) and (abs(self.beta_1c)<math.pi/4) and (abs(self.beta_1s)<math.pi/4) and (abs(self.theta_1c)<math.pi/4) and (abs(self.theta_1s)<math.pi/4)):
+            self.reinitializeTrimVars(Fx=Fx, Fz=Fz, rho=rho, V=V)
+        inflow = self.inflow
+        beta_0 = self.beta_0
+        beta_1c = self.beta_1c
+        beta_1s = self.beta_1s
+        theta_1c = self.theta_1c
+        theta_1s = self.theta_1s
+        F_x = 0
+        F_y = 0
+        F_z = 0
+        if debug: print('TARGETS:     F_x=%d      F_y=%d      F_z=%d' % (Fx, Fy, Fz))
+        while abs(F_x-Fx)>1 or abs(F_y-Fy)>1 or abs(F_z-Fz)>1:
+            #### These following equations are from slides ~70-80 in Part2.ppt of AE6070 notes.  All angles relative to flight path?
+            # find the effective blade section angle of attack
+            theta = thetaFixed + theta_1c*cospsi + theta_1s*sinpsi # local flow angle
+            betadot = omega * (beta_1s*cospsi - beta_1c*sinpsi) # local flapping rate
+            beta = beta_0 + beta_1c*cospsi + beta_1s*sinpsi # local flapping angle
+            U_T = omega*r + V*sinpsi # local tangential velocity.  This assumes small shaft angle alpha_s
+            U_P = omega*R*inflow + r*betadot + V*beta*cospsi # local perpendicular velocity.  This also assumes small shaft angle alpha_s
+            phi = np.arctan(U_P/U_T) # local flow angle
+            alphaEffective = theta - phi # effective angle of attack that the blade section sees
+            #### alphaEffective = thetaFixed - np.arctan((R*inflow*omega + r*omega*(beta_1s*cospsi-beta_1c*sinpsi) + V*math.cos(alpha_TPP-beta_1c)*cospsi*(beta_0 + beta_1c*cospsi + beta_1s*sinpsi)) / (r*omega + V*math.cos(alpha_TPP-beta_1c)*sinpsi)) + theta_1c*cospsi + theta_1s*sinpsi # This is the full equation for the line above.  Retained only for reference and troubleshooting.
+            # get the cl, cd, and cm data for blade sections.  Since we're using lookup tables, this is a quasi-steady solution.  We may want to add in corrections for unstead aerodynamic effects and dynamic stall in the future.  Dynamic stall is also important to find the vibration levels of the vehicle in high speed forward flight.
+            print alphaEffective.shape
+            cl = self.blade.cl(alphaEffective)
+            cd = self.blade.cd(alphaEffective)
+            cm = self.blade.cm(alphaEffective)
+            # apply Prandtl-Glauert compressibility correction
+            U_total = np.sqrt(U_T**2 + U_P**2)
+            mach = U_total / speedOfSound # Can this be simplified to U_T/speedOfSound ? Should check that; it'll be slightly faster if so.
+            cl = cl / np.sqrt(1-mach)
+            # Find the rotor sectional lift and drag
+            dL = .5 * rho * chord * U_total**2 * cl
+            dD = .5 * rho * chord * U_total**2 * cd
+            # rotate the sectional lift and drag into x, y, and z forces, plus torque
+            sinphi = np.sin(phi)
+            cosphi = np.cos(phi)
+            #### Do I need to rotate from the TPP to the flight-path-plane?  Not sure... we'll find out later
+            dF_x = - dL*sinphi*cospsi - dD*cosphi*cospsi
+            dF_y = - dL*sinphi*sinpsi - dD*cosphi*sinpsi
+            dF_z = - dL*cosphi + dD*sinphi
+            dQ = - dL*sinphi - dD*cosphi
+            # Integrate over the disk surface
+            dF_x[~np.isfinite(dF_x)] = 0
+            dF_y[~np.isfinite(dF_y)] = 0
+            dF_z[~np.isfinite(dF_z)] = 0
+            dQ[~np.isfinite(dQ)] = 0
+            F_x = np.sum(dF_x * dr) * numblades
+            F_y = np.sum(dF_y * dr) * numblades
+            F_z = np.sum(dF_z * dr) * numblades
+            Q = np.sum(dQ * dr * r) * numblades
+            # This is a temporary section that I stuck in for testing!  Calculating sideforce based on a 20-foot tail boom lever arm
+            Fy_tailrotor = Q / 20.
+            # calculate the tip-path-plane angles
+            alpha_TPP = math.tan(Fx/Fz) # tip path plane forward angle
+            phi_TPP = math.tan(Fy_tailrotor/Fz)
+            # define angles relative to TPP and recalculate trim angles (no flapping, only feathering)
+            beta_1c = 0
+            beta_1s = 0
+            theta_1s = alpha_TPP
+            theta_1c = - phi_TPP
+            if debug: pvar(locals(), ('F_x', 'F_y', 'F_z'))
+
+
+
     
-    def trim(self, tolerance, cttarget, mu, numblades):
+    def trimOld(self, tolerance, cttarget, mu, numblades):
         ct = cttarget
         diskArea = math.pi * self.blade.radius**2
         bladeArea = np.sum(self.blade.chord*self.blade.radius * self.blade.dr * numblades)
@@ -244,8 +335,8 @@ if __name__ == '__main__':
     mu = V / Vtip
     r = 30. # feet
     omega = Vtip / r # rad/s
-    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, chord=1./30, twist=-12.*math.pi/180, pitch=0.*math.pi/180, cutout=.2, segments=15)
-    r = Rotor(b, psiSegments=15, omega=omega, radius=30.)
+    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, rootChord=1./30, taperRatio=.8, tipTwist=-12.*math.pi/180, rootCutout=.2, segments=15)
+    r = Rotor(b, psiSegments=15, omega=omega, radius=r, pitch=5.*math.pi/180, numblades=4)
     Fhorizontal = 1./2 * rho * V**2 * f
     Fvertical = 15000. # pounds
-    r.trim(tolerance=0.001, cttarget=.12, mu=mu, numblades=4)
+    r.trim(tolerance=.1, V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fy=0, Fz=Fvertical)
