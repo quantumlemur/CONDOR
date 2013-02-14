@@ -117,7 +117,7 @@ class Rotor:
         self.pitch = pitch
         self.numblades = numblades
         # set up 1D arrays of psi and r...
-        self.psi1D, psistep = np.linspace(0, 2*math.pi, psiSegments, endpoint=False, retstep=True)
+        self.psi1D, self.dpsi = np.linspace(0, 2*math.pi, psiSegments, endpoint=False, retstep=True)
         r1D = self.blade.r
         # ...and convert them to 2D, plus chord and theta
         self.r, self.psi = np.meshgrid(r1D, self.psi1D)
@@ -171,9 +171,9 @@ class Rotor:
         r = self.r
         R = self.R
         chord = self.chord
-        thetaFixed = self.thetaFixed
         omega = self.omega
         dr = self.dr
+        dpsi = self.dpsi
         numblades = self.numblades
         cospsi = self.cospsi
         sinpsi = self.sinpsi
@@ -191,27 +191,29 @@ class Rotor:
         F_x = 0
         F_y = 0
         F_z = 0
+        loops = 0
         if debug: print('TARGETS:     F_x=%d      F_y=%d      F_z=%d' % (Fx, Fy, Fz))
-        while abs(F_x-Fx)>1 or abs(F_y-Fy)>1 or abs(F_z-Fz)>1:
+        while (abs(F_x-Fx)>1 or abs(F_y-Fy)>1 or abs(F_z-Fz)>1) and loops<1000:
+            loops += 1
             #### These following equations are from slides ~70-80 in Part2.ppt of AE6070 notes.  All angles relative to flight path?
             # find the effective blade section angle of attack
-            theta = thetaFixed + theta_1c*cospsi + theta_1s*sinpsi # local flow angle
+            theta = self.thetaFixed + theta_1c*cospsi + theta_1s*sinpsi # local flow angle
             betadot = omega * (beta_1s*cospsi - beta_1c*sinpsi) # local flapping rate
             beta = beta_0 + beta_1c*cospsi + beta_1s*sinpsi # local flapping angle
             U_T = omega*r + V*sinpsi # local tangential velocity.  This assumes small shaft angle alpha_s
-            U_P = omega*R*inflow + r*betadot + V*beta*cospsi # local perpendicular velocity.  This also assumes small shaft angle alpha_s
+            U_P = inflow + r*betadot + V*beta*cospsi # local perpendicular velocity.  This also assumes small shaft angle alpha_s
             phi = np.arctan(U_P/U_T) # local flow angle
             alphaEffective = theta - phi # effective angle of attack that the blade section sees
             #### alphaEffective = thetaFixed - np.arctan((R*inflow*omega + r*omega*(beta_1s*cospsi-beta_1c*sinpsi) + V*math.cos(alpha_TPP-beta_1c)*cospsi*(beta_0 + beta_1c*cospsi + beta_1s*sinpsi)) / (r*omega + V*math.cos(alpha_TPP-beta_1c)*sinpsi)) + theta_1c*cospsi + theta_1s*sinpsi # This is the full equation for the line above.  Retained only for reference and troubleshooting.
             # get the cl, cd, and cm data for blade sections.  Since we're using lookup tables, this is a quasi-steady solution.  We may want to add in corrections for unstead aerodynamic effects and dynamic stall in the future.  Dynamic stall is also important to find the vibration levels of the vehicle in high speed forward flight.
-            print alphaEffective.shape
             cl = self.blade.cl(alphaEffective)
             cd = self.blade.cd(alphaEffective)
             cm = self.blade.cm(alphaEffective)
             # apply Prandtl-Glauert compressibility correction
             U_total = np.sqrt(U_T**2 + U_P**2)
             mach = U_total / speedOfSound # Can this be simplified to U_T/speedOfSound ? Should check that; it'll be slightly faster if so.
-            cl = cl / np.sqrt(1-mach)
+            oldcl = cl
+            cl = cl / np.sqrt(1-mach**2)
             # Find the rotor sectional lift and drag
             dL = .5 * rho * chord * U_total**2 * cl
             dD = .5 * rho * chord * U_total**2 * cd
@@ -228,22 +230,27 @@ class Rotor:
             dF_y[~np.isfinite(dF_y)] = 0
             dF_z[~np.isfinite(dF_z)] = 0
             dQ[~np.isfinite(dQ)] = 0
-            F_x = np.sum(dF_x * dr) * numblades
-            F_y = np.sum(dF_y * dr) * numblades
-            F_z = np.sum(dF_z * dr) * numblades
-            Q = np.sum(dQ * dr * r) * numblades
+            F_x = np.sum(dF_x * dr * dpsi) * numblades
+            F_y = np.sum(dF_y * dr * dpsi) * numblades
+            F_z = np.sum(dF_z * dr * dpsi) * numblades
+            Q = np.sum(dQ * dr * r * dpsi) * numblades
             # This is a temporary section that I stuck in for testing!  Calculating sideforce based on a 20-foot tail boom lever arm
-            Fy_tailrotor = Q / 20.
+            Fy = Q / 20.
             # calculate the tip-path-plane angles
-            alpha_TPP = math.tan(Fx/Fz) # tip path plane forward angle
-            phi_TPP = math.tan(Fy_tailrotor/Fz)
+            alpha_TPP = math.tan(-Fx/Fz) # tip path plane forward angle
+            print alpha_TPP
+            phi_TPP = math.tan(Fy/Fz)
             # define angles relative to TPP and recalculate trim angles (no flapping, only feathering)
+            #beta_0 = 8./(2*math.pi) * F_z
             beta_1c = 0
             beta_1s = 0
             theta_1s = alpha_TPP
-            theta_1c = - phi_TPP
-            if debug: pvar(locals(), ('F_x', 'F_y', 'F_z'))
-
+            #print phi_TPP
+            #theta_1c = theta_1c + phi_TPP/1000.
+            if debug: pvar(locals(), ('F_x', 'F_y', 'F_z', 'Q'))
+            #print('oldpitch: %f      change: %f      newpitch: %f' % (self.pitch, + (F_z-Fz)/1000000., self.pitch + (F_z-Fz)/1000000.))
+            self.setPitch(self.pitch + (F_z-Fz)/1000000.)
+        print loops
 
 
     
@@ -335,8 +342,8 @@ if __name__ == '__main__':
     mu = V / Vtip
     r = 30. # feet
     omega = Vtip / r # rad/s
-    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, rootChord=1./30, taperRatio=.8, tipTwist=-12.*math.pi/180, rootCutout=.2, segments=15)
-    r = Rotor(b, psiSegments=15, omega=omega, radius=r, pitch=5.*math.pi/180, numblades=4)
+    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, rootChord=1./30, taperRatio=.8, tipTwist=0.*math.pi/180, rootCutout=.2, segments=15)
+    r = Rotor(b, psiSegments=15, omega=omega, radius=r, pitch=15.*math.pi/180, numblades=4)
     Fhorizontal = 1./2 * rho * V**2 * f
-    Fvertical = 15000. # pounds
+    Fvertical = -15000. # pounds
     r.trim(tolerance=.1, V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fy=0, Fz=Fvertical)
