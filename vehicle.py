@@ -47,9 +47,6 @@ class Vehicle:
         self.setMission(m)
 
 
-    def blah(self):
-
-    
     def scaleWeights(self):
         v = self.vconfig
         w = v['Weights']  # shorthand
