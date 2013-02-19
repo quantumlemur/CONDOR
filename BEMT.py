@@ -161,6 +161,7 @@ class Rotor:
             newinflow = thrust / (2.*rho*diskArea*math.sqrt((V*math.cos(self.alpha_tpp))**2 + (V*math.sin(self.alpha_tpp) + inflow)**2))
             change = abs(newinflow - inflow) / inflow
             inflow = newinflow
+        print inflow
         self.inflow = inflow
     
     def trim(self, tolerance, V, speedOfSound, rho, Fx, Fy, Fz):
@@ -217,26 +218,48 @@ class Rotor:
             # Find the rotor sectional (1D) lift and drag
             dL = .5 * rho * chord * U_total**2 * cl
             dD = .5 * rho * chord * U_total**2 * cd
+            #dL[~np.isfinite(dL)] = 0
+            #dD[~np.isfinite(dD)] = 0
             # Calculate the piecewise (2D) lift and drag
-            dL = dL * dr * dpsi
-            dD = dD * dr * dpsi
+            phi = theta_0 - alphaEffective
+            cosphi = np.cos(phi)
+            sinphi = np.sin(phi)
+            dL = (dL*sinphi*cospsi - dD*cosphi*cospsi) * dr * ( dpsi)
+            dD = (dL*sinphi + dD*cosphi) * dr * ( dpsi)
             # Integrate over the rotor surface
             T = np.sum(dL) * numblades
-            P = np.sum(dD * U_T) * numblades
+            P = np.sum(dD * U_T) * numblades / 550
             # Calculate trim angles
-            beta_0 = lockNumber * ((theta_0+blade.theta_tw)/8*(1+mu**2) - mu**2/60*(theta_0+blade.theta_tw) - lambda_TPP/6 + mu*B/6)
-            B = -8./3.*mu*((theta_0+blade.theta_tw) - 3./4.*lambda_TPP) / (1 + 3./2.*mu**2)
+            beta_0 = lockNumber * (theta_0/8*(1+mu**2) - mu**2/60*blade.theta_tw - lambda_TPP/6 + mu*B/6)
+            B = -8./3.*mu*(theta_0 - 3./4.*lambda_TPP) / (1 + 3./2.*mu**2)
             A = (-4./3.*mu*beta_0) / (1. + .5*mu**2)
             # Find vertical lift and adjust collective
             L = T * math.cos(alpha_TPP)
             liftDeficitPct = (Fz - L) / Fz
-            theta_0 -= liftDeficitPct / 100
+            theta_0 += liftDeficitPct / 1000
             # print debug output
-            if debug: pvar(locals(), ('Fz', 'L', 'theta_0', 'beta_0', 'A', 'B'))
+            collective = theta_0 * 180/math.pi
+            if debug: pvar(locals(), ('Fz', 'L', 'collective', 'beta_0', 'A', 'B', 'P'))
         print loops
 
 
     
+
+            # dF_x = - dL*sinphi*cospsi - dD*cosphi*cospsi
+            # dF_y = - dL*sinphi*sinpsi - dD*cosphi*sinpsi
+            # dF_z = - dL*cosphi + dD*sinphi
+            # dQ = - dL*sinphi - dD*cosphi
+            # # Integrate over the disk surface
+            # dF_x[~np.isfinite(dF_x)] = 0
+            # dF_y[~np.isfinite(dF_y)] = 0
+            # dF_z[~np.isfinite(dF_z)] = 0
+            # dQ[~np.isfinite(dQ)] = 0
+            # F_x = np.sum(dF_x * dr * dpsi) * numblades
+            # F_y = np.sum(dF_y * dr * dpsi) * numblades
+            # F_z = np.sum(dF_z * dr * dpsi) * numblades
+            # Q = np.sum(dQ * dr * r * dpsi) * numblades
+
+
     def trimOld(self, tolerance, cttarget, mu, numblades):
         ct = cttarget
         diskArea = math.pi * self.blade.radius**2
@@ -328,5 +351,5 @@ if __name__ == '__main__':
     b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, rootChord=1./30, taperRatio=.8, tipTwist=-12., rootCutout=.2, segments=15)
     r = Rotor(b, psiSegments=15, omega=omega, radius=r, numblades=4)
     Fhorizontal = 1./2 * rho * V**2 * f
-    Fvertical = 13000. # pounds
-    r.trim(tolerance=.1, V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fy=0, Fz=Fvertical)
+    Fvertical = 10000. # pounds
+    r.trim(tolerance=1., V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fy=0, Fz=Fvertical)
