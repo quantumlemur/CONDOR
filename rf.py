@@ -4,7 +4,7 @@ import ConfigParser
 from vehicle import Vehicle
 
 
-debug = False
+debug = True
 writeOutput = False
 
 def pvar(locals_, vars_):
@@ -101,8 +101,8 @@ class SizedVehicle:
             stopReason = 'MaxSteps reached before convergance.  Stopped with bounds: %f  to  %f' % (GWmin, GWmax)
         else:
             stopReason = 'You should never see this text.'
-        choppah.generatePowerCurve()
-        choppah.findHoverCeiling()
+        #choppah.generatePowerCurve()
+        #choppah.findHoverCeiling()
         v['Simulation']['StopReason'] = stopReason
         v['Simulation']['GoodRun'] = goodRun
         v['Sizing Results']['SizedGrossWeight'] = GW

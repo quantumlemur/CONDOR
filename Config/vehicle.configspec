@@ -1,6 +1,7 @@
 [Main Rotor]
 NumRotors = integer()
 DiskLoading = float()
+NumBlades = integer()
 Solidity = float()
 TipSpeed = float()
 Kint = float()

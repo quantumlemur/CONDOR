@@ -1,5 +1,5 @@
 import math
-
+from BEMT import Blade, Rotor
 
 debug = False
 debugFine = False
@@ -28,6 +28,7 @@ class Vehicle:
         v['Main Rotor']['DiskArea'] = GW / numRotors / diskLoading # disk area per rotor
         v['Main Rotor']['BladeArea'] =  v['Main Rotor']['DiskArea'] *  v['Main Rotor']['Solidity']
         v['Main Rotor']['R'] = math.sqrt(v['Main Rotor']['DiskArea'] / math.pi) # main rotor radius
+        v['Main Rotor']['Omega'] = v['Main Rotor']['TipSpeed'] / v['Main Rotor']['R']
         v['Wing']['WingSpan'] = v['Main Rotor']['R'] * v['Wing']['SpanRadiusRatio']
         v['Wing']['WingArea'] = v['Wing']['WingSpan']**2 / v['Wing']['WingAspectRatio']
         v['Sizing Results']['MaxBladeLoadingSeen'] = 0
@@ -40,11 +41,14 @@ class Vehicle:
         
         if v['Simulation']['UseBEMT']:
             self.powerReq = self.BEMT
+            self.blade = Blade(c81File='Config/NACA 63-012.c81', skip_header=5, skip_footer=0, rootChord=1./15, taperRatio=.8, tipTwist=-12., rootCutout=.2, segments=30)
+            self.rotor = Rotor(self.blade, psiSegments=30, omega=v['Main Rotor']['Omega'], radius=v['Main Rotor']['R'], numblades=v['Main Rotor']['NumBlades'])
         else:
             self.powerReq = self.momentumTheory
         self.scaleEngine()
         self.scaleWeights()
         self.setMission(m)
+        
 
     
     def scaleWeights(self):
@@ -345,8 +349,13 @@ class Vehicle:
         if debug: pvar(locals(), ('w', 'DiskLoading', 'inducedPower', 'profilePower', 'THP1', 'THP2', 'THP3', 'totalPower'))
         return totalPower
     
-    def BEMT(self, w, R, TipLossFactor, Density, Kint, Kov, BladeArea, FlatPlateDrag, Speed, PropEfficiency, OswaldEfficiency, WingSpan, NumRotors, Kmu, HeliEfficiency, CD0, TipSpeed, Kl):
-        pass
+    def BEMT(self):
+        v = self.vconfig
+        rho = v['Condition']['Density']
+        V = v['Condition']['Speed']/1.687
+        Fhorizontal = .5 * rho * V**2 * v['Body']['FlatPlateDrag']
+        return self.rotor.trim(tolerance=1., V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fy=0, Fz=v['Condition']['Weight'])
+        
 
     def write(self):
         # write out the output
