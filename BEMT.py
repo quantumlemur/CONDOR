@@ -30,7 +30,7 @@ import math
 import numpy as np
 from scipy import interpolate
 
-debug = False
+debug = True
 
 def pvar(locals_, vars_):
     s = ['%s: %.3f' % (var, locals_[var]) for var in vars_]
@@ -47,7 +47,8 @@ class Blade:
     # generated so that cl, cd, etc. can be returned easily later.  It will contain a
     # non-dimensional blade, with everything referenced to a radius of 1.
     
-    def __init__(self, c81File, rootChord, skip_header=0, skip_footer=0, taperRatio=1, tipTwist=0, rootCutout=0, segments=15):
+    def __init__(self, c81File, rootChord, skip_header=0, skip_footer=0, taperRatio=1, tipTwist=0, rootCutout=0, segments=15, dragDivergenceMachNumber=.85):
+        self.dragDivergenceMachNumber = dragDivergenceMachNumber
         airfoildata = np.genfromtxt(c81File, skip_header=skip_header, skip_footer=skip_footer) # read in the airfoil file
         # generate the airfoil data splines.  They are assumed to be in degrees, and are converted to radians
         self.clspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,1])
@@ -231,7 +232,7 @@ class Rotor:
         lastP = 0
         loops = 0
         tol = tolerancePct / 100
-        while not (abs(Fz-L)/Fz<tol and abs(lastP-P)/P<tol) and loops<maxSteps and np.isfinite(P) and abs(theta_0)<math.pi:
+        while not (abs(Fz-L)/Fz<tol and abs(lastP-P)/P<tol) and loops<maxSteps and np.isfinite(P) and abs(theta_0)<math.pi/4:
             loops += 1
             #### These following equations are from slides ~70-80 in Part2.ppt of AE6070 notes.  All angles relative to flight path?
             # find the effective blade section angle of attack
@@ -254,6 +255,8 @@ class Rotor:
             U_total = np.sqrt(U_T**2 + U_P**2) # Although we do not, we can assume U_T>>U_P, which is only untrue if U_T is small (i.e. on the retreating side in high-speed flight), in which case mach numbers will be small anyway, so should be ok.
             mach = U_total / speedOfSound
             cl = cl / np.sqrt(1-mach**2)
+            cl[~np.isfinite(cl)] = 0. # if local mach>1, set cl=0.  This correction doesn't apply in those ranges, but this is probably acceptable and will allow trim solutions even with local M>1.  In combination with drag divergence, it should be an OK approximation.
+            #cd[mach>blade.dragDivergenceMachNumber] = (mach[mach>blade.dragDivergenceMachNumber]-blade.dragDivergenceMachNumber)*.4 + cd[mach>blade.dragDivergenceMachNumber] # drag divergence
             # Find the rotor sectional (1D) lift and drag
             dL = .5 * rho * U_total**2 * chord * cl
             dD = .5 * rho * U_total**2 * chord * cd
@@ -293,7 +296,7 @@ class Rotor:
                 b0 = beta_0 * 180/math.pi
                 t1s = theta_1s * 180/math.pi
                 t1c = theta_1c * 180/math.pi
-                pvar(locals(), ('Fz', 'L', 'T', 'coll', 'b0', 't1c', 't1s', 'Pinduced', 'Pprofile', 'P'))
+                pvar(locals(), ('Fx', 'Fz', 'L', 'T', 'coll', 'b0', 't1c', 't1s', 'Pinduced', 'Pprofile', 'P'))
         self.inflow = inflow
         self.theta_0 = theta_0
         self.theta_1c = theta_1c
@@ -303,6 +306,7 @@ class Rotor:
         if abs(Fz-L)/Fz<tol and abs(lastP-P)/P<tol:
             P_total = Pinduced + Pprofile + Fx*V/550
         else:
+            print '%f < %f         and %f < %f' % (abs(Fz-L)/Fz, tol, abs(lastP-P)/P, tol)
             P_total = np.nan
 
         # import matplotlib.pyplot as plt
@@ -381,14 +385,23 @@ class Rotor:
     
 if __name__ == '__main__':
     from time import clock
+    from configobj import ConfigObj
+    from validate import Validator
     startTime = clock()
-    rho = 0.002207 # slugs per ft^3
-    f = 15. # square feet
-    Vtip = 650. # ft/s
-    R = 30. # feet
+    GW = 25000.
+    v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
+    m = ConfigObj('Config/mission.cfg', configspec='Config/mission.configspec')
+    vvdt = Validator()
+    v.validate(vvdt)
+    mvdt = Validator()
+    m.validate(mvdt)
+    rho = m['Segment 1']['Density']
+    f = 0.25 * GW**.5 * (1-v['Body']['DragTechImprovementFactor'])
+    Vtip = v['Main Rotor']['TipSpeed'] # ft/s
+    R = v['Main Rotor']['Radius'] # feet
     omega = Vtip / R # rad/s
-    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, rootChord=1./7, taperRatio=.9, tipTwist=-8., rootCutout=.2, segments=100)
-    r = Rotor(b, psiSegments=200, Vtip=Vtip, radius=R, numblades=4)
+    blade = Blade(c81File='Config/%s'%v['Main Rotor']['AirfoilFile'], skip_header=0, skip_footer=0, rootChord=v['Main Rotor']['RootChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout']/v['Main Rotor']['Radius'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
+    rotor = Rotor(blade, psiSegments=v['Simulation']['numBladeElementSegments'], Vtip=v['Main Rotor']['TipSpeed'], radius=v['Main Rotor']['Radius'], numblades=v['Main Rotor']['NumBlades'])
     # bladeArea = np.sum(b.chord * r.radius * b.dr * r.radius * r.numblades)
     # diskArea = math.pi * r.radius**2
     # solidity = bladeArea / diskArea
@@ -414,11 +427,11 @@ if __name__ == '__main__':
     # plt.xlabel('speed (kts)')
     # plt.ylabel('power (hp)')
     # plt.show()
-    V = 162.5
+    V = 800.
     mu = V/Vtip
-    Fhorizontal = .5 * rho * V**2 * f
-    Fvertical = 35000. # pounds
-    power =  r.trim(tolerancePct=1., V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=1000)
+    Fhorizontal = .5 * rho * V**2 * f * .1
+    Fvertical = GW*.1 # pounds
+    power =  rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=v['Simulation']['MaxSteps'])
     stopTime = clock()
     elapsed = stopTime - startTime
     if debug: pvar(locals(), ('power', 'elapsed'))
