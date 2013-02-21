@@ -247,9 +247,9 @@ class Rotor:
             # Calculate the piecewise (2D) lift and drag
             cosphi = np.cos(phi)
             sinphi = np.sin(phi)
-            dT = (dL*cosphi - dD*sinphi) * dr * ( dpsi)
-            dDinduced = dL*sinphi * dr * dpsi
-            dDprofile = dD*cosphi * dr * dpsi
+            dT = (dL*cosphi - dD*sinphi) * dr * ( dpsi) / (2*math.pi)
+            dDinduced = dL*sinphi * dr * dpsi / (2*math.pi)
+            dDprofile = dD*cosphi * dr * dpsi / (2*math.pi)
             # Integrate over the rotor surface
             T = np.sum(dT) * numblades
             Pinduced = np.sum(dDinduced * U_T) * numblades / 550
@@ -367,14 +367,18 @@ class Rotor:
 if __name__ == '__main__':
     from time import clock
     startTime = clock()
-    rho = 0.001207 # slugs per ft^3
+    rho = 0.002207 # slugs per ft^3
     f = 15. # square feet
     Vtip = 650. # ft/s
     R = 30. # feet
     omega = Vtip / R # rad/s
-    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, rootChord=1./15, taperRatio=.8, tipTwist=-8., rootCutout=.2, segments=100)
+    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, rootChord=1./7, taperRatio=.9, tipTwist=-8., rootCutout=.2, segments=100)
     r = Rotor(b, psiSegments=100, Vtip=Vtip, radius=R, numblades=4)
-    # speeds = np.arange(0, 5, .5)
+    # bladeArea = np.sum(b.chord * r.radius * b.dr * r.radius * r.numblades)
+    # diskArea = math.pi * r.radius**2
+    # solidity = bladeArea / diskArea
+    # pvar(locals(), ('bladeArea', 'diskArea', 'solidity'))
+    # speeds = np.arange(0, 400, 5)
     # Pi = np.zeros(speeds.size)
     # Ppr = np.zeros(speeds.size)
     # Ppa = np.zeros(speeds.size)
@@ -382,7 +386,7 @@ if __name__ == '__main__':
     #     V = speeds[i]
     #     print V
     #     Fhorizontal = 1./2 * rho * V**2 * f
-    #     Fvertical = 15000. # pounds
+    #     Fvertical = 25000. # pounds
     #     Pi[i], Ppr[i] = r.trim(tolerancePct=.1, V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=10000)
     #     Ppa[i] =  Fhorizontal*V/550
     # import matplotlib.pyplot as plt
@@ -398,7 +402,7 @@ if __name__ == '__main__':
     V = 162.5
     mu = V/Vtip
     Fhorizontal = .5 * rho * V**2 * f
-    Fvertical = 45000. # pounds
+    Fvertical = 35000. # pounds
     print r.trim(tolerancePct=1., V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=1000)
     stopTime = clock()
     elapsed = stopTime - startTime

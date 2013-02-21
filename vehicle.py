@@ -94,9 +94,6 @@ class Vehicle:
             totaltime += m[seg]['Time']
             m[seg]['EndTime'] = totaltime
             m[seg]['DensityRatio'] = m[seg]['Density'] / 0.002377
-            m[seg]['Kl'] = 1 - m[seg]['Speed']/(1.3*v['Wing']['MaxSpeed'])
-            m[seg]['AdvanceRatio'] = m[seg]['Speed']*1.68781 / v['Main Rotor']['TipSpeed']
-            m[seg]['Kmu'] = 1. + 3.*m[seg]['AdvanceRatio']**2. + 5.*m[seg]['AdvanceRatio']**4.
             load = m[seg]['CrewWeight'] + m[seg]['PayloadWeight'] + m[seg]['MiscWeight']
             m[seg]['DeltaLoad'] = load - prevLoad
             prevLoad = load
@@ -115,38 +112,20 @@ class Vehicle:
         powersSL = [0] * len(speeds)
         powersCruise = [0] * len(speeds)
         # do the actual sweep
-        BLs = [0] * len(speeds)
         for i in range(len(speeds)):
             v['Condition']['Weight'] = self.GW
             v['Condition']['Density'] = 0.002378 # SL
             v['Condition']['Speed'] = speeds[i]
-            AdvanceRatio =  v['Condition']['Speed']*1.68781 / v['Main Rotor']['TipSpeed']
-            v['Condition']['Kmu'] = 1. + 3.*AdvanceRatio**2. + 5.*AdvanceRatio**4.
-            v['Condition']['Kl'] = 1 - v['Condition']['Speed']/(1.3*v['Wing']['MaxSpeed'])
-            powersSL[i] = self.powerReq()*1.1
+            powersSL[i] = self.powerReq()
         for i in range(len(speeds)):
             v['Condition']['Weight'] = self.GW
             v['Condition']['Density'] = 0.00154522 # 14k ft
             v['Condition']['Speed'] = speeds[i]
-            AdvanceRatio =  v['Condition']['Speed']*1.68781 / v['Main Rotor']['TipSpeed']
-            v['Condition']['Kmu'] = 1. + 3.*AdvanceRatio**2. + 5.*AdvanceRatio**4.
-            v['Condition']['Kl'] = 1 - v['Condition']['Speed']/(1.3*v['Wing']['MaxSpeed'])
-            powersCruise[i] = self.powerReq()*1.1
-            
-            if speeds[i] < v['Wing']['MaxSpeed']:
-                drag = .5 * v['Condition']['Density'] * (v['Condition']['Speed']*1.68781)**2 * v['Body']['FlatPlateDrag']
-                rotorThrust = math.sqrt(drag**2 + (1*self.GW)**2)
-                bladeLoading = rotorThrust / (v['Condition']['Density'] * v['Main Rotor']['BladeArea'] * v['Main Rotor']['TipSpeed']**2)
-                BLs[i] = bladeLoading
-                v['Sizing Results']['MaxBladeLoadingSeen'] = max(bladeLoading, v['Sizing Results']['MaxBladeLoadingSeen'])
-                maxBladeLoading = (200.-v['Condition']['Speed'] / 200.) * .5 + 1.5
-                bladeLoadingViolated = bladeLoading > maxBladeLoading
-                v['Sizing Results']['BladeLoadingViolated'] = v['Sizing Results']['BladeLoadingViolated'] or bladeLoadingViolated
-            
-        v['BLs'] = BLs
-        self.speeds = speeds
-        self.powersCruise = powersCruise
-        self.powersSL = powersSL
+            powersCruise[i] = self.powerReq()
+
+        v['Power Curve']['Speeds'] = speeds
+        v['Power Curve']['PowersCruise'] = powersCruise
+        v['Power Curve']['PowersSL'] = powersSL
     
     def findHoverCeiling(self):
         v = self.vconfig
@@ -159,9 +138,6 @@ class Vehicle:
             v['Condition']['Weight'] = self.GW
             v['Condition']['Density'] = 5e-13*altitude**2 - 7e-8*altitude + .0024
             v['Condition']['Speed'] = 0.
-            AdvanceRatio =  v['Condition']['Speed']*1.68781 / v['Main Rotor']['TipSpeed']
-            v['Condition']['Kmu'] = 1. + 3.*AdvanceRatio**2. + 5.*AdvanceRatio**4.
-            v['Condition']['Kl'] = 1 - v['Condition']['Speed']/(1.3*v['Wing']['MaxSpeed'])
             powerRequired = self.powerReq()*1.1
             powerAvailable = v['Powerplant']['MCP'] * (-2e-5*altitude + 1)
         v['Sizing Results']['HoverCeiling'] = altitude
@@ -192,9 +168,6 @@ class Vehicle:
         v['Condition']['Weight'] = self.GW
         v['Condition']['Density'] = 0.001852 # 6k 95f
         v['Condition']['Speed'] = 0 # hover
-        AdvanceRatio =  v['Condition']['Speed']*1.68781 / v['Main Rotor']['TipSpeed']
-        v['Condition']['Kmu'] = 1 + 3*AdvanceRatio**2 + 5*AdvanceRatio**4
-        v['Condition']['Kl'] = 1 - v['Condition']['Speed']/(1.3*v['Wing']['MaxSpeed'])
         hoverpower = self.powerReq()
         if math.isnan(hoverpower):
             v['Sizing Results']['CouldTrim'] = False
@@ -205,9 +178,6 @@ class Vehicle:
         v['Condition']['Weight'] = self.GW
         v['Condition']['Density'] = 0.001207 # 20k 95f
         v['Condition']['Speed'] = v['Wing']['MaxSpeed'] # Max speed
-        AdvanceRatio =  v['Condition']['Speed']*1.68781 / v['Main Rotor']['TipSpeed']
-        v['Condition']['Kmu'] = 1 + 3*AdvanceRatio**2 + 5*AdvanceRatio**4
-        v['Condition']['Kl'] = 1 - v['Condition']['Speed']/(1.3*v['Wing']['MaxSpeed'])
         cruisepower = self.powerReq()
         if math.isnan(cruisepower):
             v['Sizing Results']['CouldTrim'] = False
@@ -332,6 +302,7 @@ class Vehicle:
 if __name__ == '__main__':   
     from configobj import ConfigObj
     from validate import Validator
+    import matplotlib.pyplot as plt
     v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
     m = ConfigObj('Config/mission.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
@@ -339,6 +310,16 @@ if __name__ == '__main__':
     mvdt = Validator()
     m.validate(mvdt)
     vehicle = Vehicle(v, m, 25000.)
-    vehicle.flyMission()
+    #vehicle.flyMission()
+    vehicle.generatePowerCurve()
     vehicle.write()
+
+    plt.figure()
+    plt.plot(v['Power Curve']['Speeds'], v['Power Curve']['PowersCruise'])
+    plt.plot(v['Power Curve']['Speeds'], v['Power Curve']['PowersSL'])
+    plt.legend(('Cruise', 'Sea Level'))
+    plt.xlabel('Speed (kts)')
+    plt.ylabel('Power (hp)')
+    plt.show()
+
     
