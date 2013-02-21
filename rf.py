@@ -17,56 +17,7 @@ class SizedVehicle:
     def __init__(self, vconfig, mconfig):
         self.vconfig = vconfig
         self.mconfig = mconfig
-        #self.setMission(mconfig)
-    
-    def setMission(self, mconfig):
-        # This function sets the mission, and analyzes all the mission segments, fleshing them out with some calculated values
-        self.mconfig = mconfig
-        m = self.mconfig
-        v = self.vconfig
-        totaltime = 0
-        segment = 1
-        numsegs = 0
-        while 'Segment %s' % segment in m:
-            seg = 'Segment %s' % segment
-            m[seg]['Time'] = m[seg]['Distance'] / m[seg]['Speed'] * 60 # time in minutes
-            m[seg]['StartTime'] = totaltime
-            totaltime += m[seg]['Time']
-            m[seg]['EndTime'] = totaltime
-            m[seg]['DensityRatio'] = m[seg]['Density'] / 0.002377
-            m[seg]['Kl'] = 1 - m[seg]['Speed']/(1.3*v['Wing']['MaxSpeed'])
-            m[seg]['AdvanceRatio'] = m[seg]['Speed']*1.68781 / v['Main Rotor']['TipSpeed']
-            m[seg]['Kmu'] = 1 + 3*m[seg]['AdvanceRatio']**2 + 5*m[seg]['AdvanceRatio']**4
-            segment += 1
-            numsegs += 1
-        m['TotalTime'] = totaltime
-        m['NumSegments'] = numsegs
-        # Step through the segments backwards and find the payload delta from the next segment
-        prevLoad = 0
-        for i in range(m['NumSegments'], 0, -1):
-            seg = 'Segment %s' % i
-            load = m[seg]['CrewWeight'] + m[seg]['PayloadWeight'] + m[seg]['MiscWeight']
-            m[seg]['DeltaLoad'] = load - prevLoad
-            prevLoad = load
-    
-    def sizeMissionOld(self):
-        """This is the old sizing routine.  It uses the approximate missize amount
-        given by the fuel surplus/deficiency to adjust the GW.  Seems to be stable
-        but I don't know for sure.  Not updated any more."""
-        v = self.vconfig
-        m = self.mconfig
-        steps = 0
-        missize = 99999
-        GW = v['Simulation']['StartGW']
-        while abs(missize)>v['Simulation']['GWTolerance'] and steps<v['Simulation']['MaxSteps']:
-            choppah = Vehicle(v, m, GW)
-            choppah.flyMission()
-            missize = choppah.misSize
-            if debug: pvar(locals(), ('steps', 'GW', 'missize'))
-            GW -= missize
-            steps += 1
-        if debug: pvar(locals(), ('steps', 'GW', 'missize'))
-        if writeOutput: choppah.write()
+
     
     def sizeMission(self):
         """This is the new sizing routine.  It uses bracketing to narrow the tolerances
