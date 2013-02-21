@@ -112,13 +112,13 @@ class Rotor:
 
     It contains dimensional quantities."""
     
-    def __init__(self, blade, psiSegments, omega, radius, numblades):
+    def __init__(self, blade, psiSegments, Vtip, radius, numblades):
         self.blade = blade
-        self.omega = omega
+        self.Vtip = Vtip
         self.radius = radius
         self.R = radius
         self.numblades = numblades
-        self.Vtip = omega * (2*math.pi*radius)
+        self.omega = Vtip / radius
         # set up 1D arrays of psi and r...
         self.psi1D, self.dpsi = np.linspace(0, 2*math.pi, psiSegments, endpoint=False, retstep=True)
         r1D = self.blade.r
@@ -144,28 +144,39 @@ class Rotor:
     def reinitializeTrimVars(self):
         # We'll just use .1 rad = 5.73 deg to initialize for now.  It'd be better to use closed-form estimates, but we'll add that later.
         self.beta_0 = .1 # precone
-        self.beta_1c = .1
-        self.beta_1s = .1
-        self.theta_0 = .1
-        self.theta_1c = .1
-        self.theta_1s = .1
-        self.A = .1
-        self.B = .1
+        self.theta_0 = .2
+        self.theta_1c = 0.
+        self.theta_1s = 0.
 
-    def reinitializeInflow(self, Fx, Fz, rho, V):
+    def calcInflow(self, Fx, Fz, rho, V):
         # inflow calculations
-        self.alpha_TPP = math.tan(Fx/Fz)
+        alpha_TPP = math.tan(Fx/Fz)
         thrust = math.sqrt(Fx**2 + Fz**2)
         diskArea = math.pi * self.R**2
         inflow = math.sqrt(thrust / (2.*rho*diskArea))
         change = 999.
         while change>.01:
-            newinflow = thrust / (2.*rho*diskArea*math.sqrt((V*math.cos(self.alpha_TPP))**2 + (V*math.sin(self.alpha_TPP) + inflow)**2))
+            newinflow = thrust / (2.*rho*diskArea*math.sqrt((V*math.cos(alpha_TPP))**2 + (V*math.sin(alpha_TPP) + inflow)**2))
             change = abs(newinflow - inflow) / inflow
             inflow = newinflow
-        self.inflow = inflow
+        #inflow_uniform_TPP = inflow #+ V*math.sin(alpha_TPP)
+        #lambda_uniform_TPP = inflow_uniform_TPP / self.Vtip
+        #mu = V / self.Vtip
+        #lambda_i = inflow / self.Vtip
+        #l = lambda_i + mu*math.sin(alpha_TPP)
+        #lambda_nonuniform = lambda_i * (1 + 4./3.*mu/l)/(1.2+mu/l)*self.r/self.R*self.cospsi
+        #if debug: pvar(locals(), ('mu', 'alpha_TPP', 'inflow', 'inflow_uniform_TPP', 'lambda_uniform_TPP'))
+        inflow = inflow * (1. + (4./3.*V/inflow)/(1.2+V/inflow)*self.r/self.R*self.cospsi) # Glauert non-uniform inflow correction
+        # import matplotlib.pyplot as plt
+        # f = plt.figure()
+        # f.add_subplot(111, projection='polar')
+        # c = plt.contourf(self.psi, self.r, inflow)
+        # plt.colorbar(c)
+        # plt.title('inflow')
+        # plt.show()
+        return inflow
     
-    def trim(self, tolerance, V, speedOfSound, rho, Fx, Fy, Fz):
+    def trim(self, tolerancePct, V, speedOfSound, rho, Fx, Fz, maxSteps):
         """Attempts to trim the rotor at given conditions.  Will re-use trim variables from last time if possible.
         Note that "drag" and "weight" in the variables are really just the veritcal and horizontal components of
         the force that the rotor is generating."""
@@ -182,33 +193,41 @@ class Rotor:
         Vtip = self.Vtip
         blade = self.blade
         mu = V / Vtip
-        lockNumber = 8 # assumed estimate
+        lockNumber = 8. # assumed estimate
         alpha_TPP = math.tan(Fx/Fz) # tip path plane angle
 
+        if debug: pvar(locals(), ('V', 'Fx', 'Fz'))
+
+        dtheta_0_multiplier = math.sqrt(Fz**2 + Fx**2) / 10000000
+        dtheta_0_multiplier = min(dtheta_0_multiplier, 0.1)
+        dtheta_0_multiplier = max(dtheta_0_multiplier, 0.0001)
+
         # First we'll check if the pre-existing trim solution is reasonable. If not, re-initialize them.
-        if not((self.inflow<1000) and (self.beta_0>0) and (self.beta_0<math.pi/4) and (abs(self.theta_1c)<math.pi/4) and (abs(self.theta_1s)<math.pi/4)):
+        if not((self.beta_0>0) and (self.beta_0<math.pi/4) and (abs(self.theta_1c)<math.pi/4) and (abs(self.theta_1s)<math.pi/4)):
             self.reinitializeTrimVars()
-        self.reinitializeInflow(Fx=Fx, Fz=Fz, rho=rho, V=V)
-        inflow = self.inflow
-        lambda_TPP = inflow / Vtip + mu*math.tan(alpha_TPP)
+        inflow = self.calcInflow(Fx=Fx, Fz=Fz, rho=rho, V=V)
         beta_0 = self.beta_0
         theta_0 = self.theta_0
         theta_1c = self.theta_1c
         theta_1s = self.theta_1s
+        roll = 999
+        pitch = 999
         L = 0
+        P = 0
         loops = 0
-        if debug: print('TARGETS:     F_x=%d      F_y=%d      F_z=%d' % (Fx, Fy, Fz))
-        while (abs(Fz-L)>tolerance) and loops<10000:
+        tol = tolerancePct / 100
+        while not (abs(Fz-L)/Fz<tol and abs(lastP-P)/P<tol) and loops<maxSteps and np.isfinite(P) and abs(theta_0)<math.pi:
             loops += 1
             #### These following equations are from slides ~70-80 in Part2.ppt of AE6070 notes.  All angles relative to flight path?
             # find the effective blade section angle of attack
-            beta = beta_0 # Ignore flapping; only use precone
-            U_T = omega*r + V*sinpsi # local tangential velocity.  This assumes small shaft angle alpha_s
-            U_P = inflow + V*beta*cospsi # local perpendicular velocity.  This ignores flapping and also assumes small shaft angle alpha_s
+            beta = beta_0
+            U_T = omega*r + V*sinpsi # local tangential velocity.
+            U_P = inflow + V*beta*cospsi # local perpendicular velocity.
             # A = theta_1c-beta_1s
             # B = theta_1s+beta_1c
-            theta = theta_0 + theta_1c*cospsi - theta_1s*sinpsi
-            alphaEffective = theta - np.arctan(U_P/U_T)
+            theta = theta_0 + blade.theta_tw*r/R + theta_1c*cospsi - theta_1s*sinpsi
+            phi = np.arctan(U_P/U_T)
+            alphaEffective = theta - phi
             #alphaEffective = 1/U_T * (omega*r*(theta_0 + blade.theta_tw*r/R + (theta_1c)*cospsi + (theta_1s)*sinpsi)*V*(theta_0 + blade.theta_tw*r/R)*sinpsi + V*(theta_1c)*cospsi*sinpsi + V*(theta_1s)*sinpsi**2 - V*beta_0*cospsi - V*alpha_TPP - inflow)
             #### alphaEffective = thetaFixed - np.arctan((R*inflow*omega + r*omega*(beta_1s*cospsi-beta_1c*sinpsi) + V*math.cos(alpha_TPP-beta_1c)*cospsi*(beta_0 + beta_1c*cospsi + beta_1s*sinpsi)) / (r*omega + V*math.cos(alpha_TPP-beta_1c)*sinpsi)) + theta_1c*cospsi + theta_1s*sinpsi # This is the full equation for the line above.  Retained only for reference and troubleshooting.
             # get the cl, cd, and cm data for blade sections.  Since we're using lookup tables, this is a quasi-steady solution.  We may want to add in corrections for unstead aerodynamic effects and dynamic stall in the future.  Dynamic stall is also important to find the vibration levels of the vehicle in high speed forward flight.
@@ -221,12 +240,11 @@ class Rotor:
             mach = U_total / speedOfSound
             cl = cl / np.sqrt(1-mach**2)
             # Find the rotor sectional (1D) lift and drag
-            dL = .5 * rho * chord * U_total**2 * cl
-            dD = .5 * rho * chord * U_total**2 * cd
+            dL = .5 * rho * U_total**2 * chord * cl
+            dD = .5 * rho * U_total**2 * chord * cd
             #dL[~np.isfinite(dL)] = 0
             #dD[~np.isfinite(dD)] = 0
             # Calculate the piecewise (2D) lift and drag
-            phi = theta - alphaEffective
             cosphi = np.cos(phi)
             sinphi = np.sin(phi)
             dT = (dL*cosphi - dD*sinphi) * dr * ( dpsi)
@@ -236,53 +254,93 @@ class Rotor:
             T = np.sum(dT) * numblades
             Pinduced = np.sum(dDinduced * U_T) * numblades / 550
             Pprofile = np.sum(dDprofile * U_T) * numblades / 550
+            lastP = P
             P = Pinduced + Pprofile
             # Calculate trim angles
-            beta_0 = lockNumber * (theta_0/8*(1+mu**2) - mu**2/60*blade.theta_tw - lambda_TPP/6 + mu*theta_1s/6)
-            theta_1s = -8./3.*mu*(theta_0 - 3./4.*lambda_TPP) / (1 + 3./2.*mu**2)
-            theta_1c = (-4./3.*mu*beta_0) / (1. + .5*mu**2)
+            #beta_0 = lockNumber * (theta_0/8*(1+mu**2) - mu**2/60*blade.theta_tw - lambda_uniform_TPP/6 + mu*theta_1s/6)
+            #theta_1s = -8./3.*mu*(theta_0 - 3./4.*lambda_uniform_TPP) / (1 + 3./2.*mu**2)
+            #theta_1c = (-4./3.*mu*beta_0) / (1. + .5*mu**2)
+            beta_0 = lockNumber / (2.*math.pi) * T / (.5*rho*math.pi*R**2*Vtip**2) # 
+            pitch = np.sum(dT*cospsi) / T / 1000
+            roll = np.sum(dT*sinpsi) / T / 1000
+            theta_1c -= pitch
+            theta_1s += roll
             # Find vertical lift and adjust collective
             L = T * math.cos(alpha_TPP)
             liftDeficitPct = (Fz - L) / Fz
-            dtheta_0 = liftDeficitPct / 100
+            dtheta_0 = liftDeficitPct * dtheta_0_multiplier
             # cap the max change at 0.1
-            if abs(dtheta_0) > 0.01:
-                dtheta_0 /= abs(dtheta_0 * 100)
-            theta_0 += dtheta_0
-            # print debug output
-            collective = theta_0 * 180/math.pi
-            if debug: pvar(locals(), ('Fz', 'L', 'collective', 'beta_0', 'theta_1c', 'theta_1s', 'Pinduced', 'Pprofile', 'P'))
+            if abs(dtheta_0) > 0.1:
+                dtheta_0 /= abs(dtheta_0 * 10)
+            theta_0 += dtheta_0            
+            if debug: 
+                coll = theta_0 * 180/math.pi
+                b0 = beta_0 * 180/math.pi
+                t1s = theta_1s * 180/math.pi
+                t1c = theta_1c * 180/math.pi
+                pvar(locals(), ('Fz', 'L', 'T', 'coll', 'b0', 't1c', 't1s', 'Pinduced', 'Pprofile', 'P'))
         self.inflow = inflow
         self.theta_0 = theta_0
         self.theta_1c = theta_1c
         self.theta_1s = theta_1s
         self.beta_0 = beta_0
 
-        P_total = Pinduced + Pprofile + Fx*V/550
-        return P_total
+        if abs(Fz-L)/Fz<tol and abs(lastP-P)/P<tol:
+            P_total = Pinduced + Pprofile + Fx*V/550
+        else:
+            P_total = np.nan
+
         # import matplotlib.pyplot as plt
         # f = plt.figure()
-        # f.add_subplot(221, projection='polar')
+        # f.add_subplot(331, projection='polar')
         # c = plt.contourf(psi, r, dT)
         # plt.colorbar(c)
         # plt.title('dT')
 
-        # f.add_subplot(222, projection='polar')
-        # c = plt.contourf(psi, r, alphaEffective*180/math.pi)
+        # f.add_subplot(332, projection='polar')
+        # c = plt.contourf(psi, r, alphaEffective*180/math.pi, np.arange(-20, 20))
         # plt.colorbar(c)
         # plt.title('alpha')
 
-        # f.add_subplot(223, projection='polar')
-        # c = plt.contourf(psi, r, dL)
+        # f.add_subplot(333, projection='polar')
+        # c = plt.contourf(psi, r, U_total)
         # plt.colorbar(c)
-        # plt.title('dL')
+        # plt.title('U_total')
 
-        # f.add_subplot(224, projection='polar')
+        # f.add_subplot(334, projection='polar')
+        # c = plt.contourf(psi, r, cl)
+        # plt.colorbar(c)
+        # plt.title('cl')
+
+        # f.add_subplot(335, projection='polar')
+        # c = plt.contourf(psi, r, cd)
+        # plt.colorbar(c)
+        # plt.title('cd')
+
+        # f.add_subplot(336, projection='polar')
+        # c = plt.contourf(psi, r, theta*180/math.pi)
+        # plt.colorbar(c)
+        # plt.title('theta')
+
+        # f.add_subplot(337, projection='polar')
+        # c = plt.contourf(psi, r, U_P)
+        # plt.colorbar(c)
+        # plt.title('U_P')
+
+        # f.add_subplot(338, projection='polar')
         # c = plt.contourf(psi, r, U_T)
         # plt.colorbar(c)
         # plt.title('U_T')
 
+        # f.add_subplot(339, projection='polar')
+        # c = plt.contourf(psi, r, phi*180/math.pi, np.arange(-20, 20))
+        # plt.colorbar(c)
+        # plt.title('phi')
+
         # plt.show()
+
+        return P_total #(Pinduced, Pprofile)
+
 
 
 
@@ -307,36 +365,41 @@ class Rotor:
 
     
 if __name__ == '__main__':
+    from time import clock
+    startTime = clock()
     rho = 0.001207 # slugs per ft^3
     f = 15. # square feet
     Vtip = 650. # ft/s
     R = 30. # feet
     omega = Vtip / R # rad/s
-    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, rootChord=1./15, taperRatio=.8, tipTwist=-12., rootCutout=.2, segments=100)
-    r = Rotor(b, psiSegments=100, omega=omega, radius=R, numblades=4)
-    speeds = np.arange(10, 500, 10)
-    Pi = np.zeros(speeds.size)
-    Ppr = np.zeros(speeds.size)
-    Ppa = np.zeros(speeds.size)
-    for i in xrange(speeds.size):
-        V = speeds[i]
-        print V
-        Fhorizontal = 1./2 * rho * V**2 * f
-        Fvertical = 15000. # pounds
-        Pi[i], Ppr[i] = r.trim(tolerance=1., V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fy=0, Fz=Fvertical)
-        Ppa[i] =  Fhorizontal*V/550
-    import matplotlib.pyplot as plt
-    plt.figure()
-    plt.plot(speeds/1.687, Pi+Ppr+Ppa)
-    plt.plot(speeds/1.687, Pi)
-    plt.plot(speeds/1.687, Ppr)
-    plt.plot(speeds/1.687, Ppa)
-    plt.legend(('total', 'induced', 'profile', 'parasite'))
-    plt.xlabel('speed (kts)')
-    plt.ylabel('power (hp)')
-    plt.show()
-    # V = .1
-    # mu = V/Vtip
-    # Fhorizontal = 1./2 * rho * V**2 * f
-    # Fvertical = 30000. # pounds
-    # r.trim(tolerance=1., V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fy=0, Fz=Fvertical)
+    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, rootChord=1./15, taperRatio=.8, tipTwist=-8., rootCutout=.2, segments=100)
+    r = Rotor(b, psiSegments=100, Vtip=Vtip, radius=R, numblades=4)
+    # speeds = np.arange(0, 5, .5)
+    # Pi = np.zeros(speeds.size)
+    # Ppr = np.zeros(speeds.size)
+    # Ppa = np.zeros(speeds.size)
+    # for i in xrange(speeds.size):
+    #     V = speeds[i]
+    #     print V
+    #     Fhorizontal = 1./2 * rho * V**2 * f
+    #     Fvertical = 15000. # pounds
+    #     Pi[i], Ppr[i] = r.trim(tolerancePct=.1, V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=10000)
+    #     Ppa[i] =  Fhorizontal*V/550
+    # import matplotlib.pyplot as plt
+    # plt.figure()
+    # plt.plot(speeds/1.687, Pi+Ppr+Ppa)
+    # plt.plot(speeds/1.687, Pi)
+    # plt.plot(speeds/1.687, Ppr)
+    # plt.plot(speeds/1.687, Ppa)
+    # plt.legend(('total', 'induced', 'profile', 'parasite'))
+    # plt.xlabel('speed (kts)')
+    # plt.ylabel('power (hp)')
+    # plt.show()
+    V = 162.5
+    mu = V/Vtip
+    Fhorizontal = .5 * rho * V**2 * f
+    Fvertical = 45000. # pounds
+    print r.trim(tolerancePct=1., V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=1000)
+    stopTime = clock()
+    elapsed = stopTime - startTime
+    if debug: print('Elapsed time: %f' % elapsed)

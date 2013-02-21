@@ -5,7 +5,7 @@ from vehicle import Vehicle
 
 
 debug = True
-writeOutput = False
+writeOutput = True
 
 def pvar(locals_, vars_):
     s = ['%s: %d' % (var, locals_[var]) for var in vars_]
@@ -80,7 +80,7 @@ class SizedVehicle:
         GW = (GWmax - GWmin) / 2 + GWmin
         choppah = Vehicle(v, m, GW) # http://www.youtube.com/watch?v=Xs_OacEq2Sk
         choppah.flyMission()
-        while GWmax-GWmin>v['Simulation']['GWTolerance'] and steps<v['Simulation']['MaxSteps']:
+        while GWmax-GWmin>v['Simulation']['GWTolerance'] and steps<v['Simulation']['MaxSteps'] and v['Sizing Results']['CouldTrim']:
             if choppah.misSize > 0:
                 GWmax = GW
             else:
@@ -99,6 +99,8 @@ class SizedVehicle:
             goodRun = True
         elif steps >= v['Simulation']['MaxSteps']:
             stopReason = 'MaxSteps reached before convergance.  Stopped with bounds: %f  to  %f' % (GWmin, GWmax)
+        elif not v['Sizing Results']['CouldTrim']:
+            stopReason = 'Could not trim at all desired conditions'
         else:
             stopReason = 'You should never see this text.'
         #choppah.generatePowerCurve()
@@ -106,7 +108,11 @@ class SizedVehicle:
         v['Simulation']['StopReason'] = stopReason
         v['Simulation']['GoodRun'] = goodRun
         v['Sizing Results']['SizedGrossWeight'] = GW
-        v['Sizing Results']['Optimized'] = True
+        if goodRun:
+            v['Sizing Results']['Optimized'] = True
+        else:
+            v['Sizing Results']['Optimized'] = False
+        if debug: print('Optimized: %s     %s' % (goodRun, stopReason))
         if writeOutput: choppah.write()
 
 if __name__ == '__main__':

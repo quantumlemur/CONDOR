@@ -9,6 +9,11 @@ Kov = float()
 HeliEfficiency = float()
 CD0 = float()
 TipLossFactor = float()
+AirfoilFile = string()
+RootChord = float()
+TaperRatio = float()
+TipTwist = float()
+RootCutout = float()
 
 [Weights]
 BaselineGrossWeight = float()
@@ -30,9 +35,12 @@ MaxSpeed = float()
 WingClMax = float()
 WingCD0 = float()
 OswaldEfficiency = float()
+MaxWingLoadProportion = float()
 
 [Aux Propulsion]
+NumAuxProps = integer()
 PropEfficiency = float()
+PropulsionFactor = float()
 
 [Powerplant]
 BaselineMRP = float()
@@ -49,4 +57,6 @@ StartGW = float()
 GWMin = float()
 GWmax = float()
 GWTolerance = float()
+TrimAccuracyPercentage = float()
+numBladeElementSegments = integer()
 UseBEMT = boolean()
