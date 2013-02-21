@@ -83,14 +83,14 @@ class Vehicle:
         v['Weights']['EmptyWeight'] = v['Weights']['EmptyWeightFraction'] * self.GW
     
     def setMission(self, mconfig):
-        """This is a duplicate of the same function in rf.py"""
-        # This function sets the mission, and analyzes all the mission segments, fleshing them out with some calculated values
+        """This function sets the mission and analyzes all the mission segments, fleshing them out with some calculated values"""
         self.mconfig = mconfig
         m = self.mconfig
         v = self.vconfig
         totaltime = 0
         segment = 1
         numsegs = 0
+        prevLoad = 0
         while 'Segment %s' % segment in m:
             seg = 'Segment %s' % segment
             m[seg]['Time'] = m[seg]['Distance'] / m[seg]['Speed'] * 60 # time in minutes
@@ -101,17 +101,14 @@ class Vehicle:
             m[seg]['Kl'] = 1 - m[seg]['Speed']/(1.3*v['Wing']['MaxSpeed'])
             m[seg]['AdvanceRatio'] = m[seg]['Speed']*1.68781 / v['Main Rotor']['TipSpeed']
             m[seg]['Kmu'] = 1. + 3.*m[seg]['AdvanceRatio']**2. + 5.*m[seg]['AdvanceRatio']**4.
+            load = m[seg]['CrewWeight'] + m[seg]['PayloadWeight'] + m[seg]['MiscWeight']
+            m[seg]['DeltaLoad'] = load - prevLoad
+            prevLoad = load
             segment += 1
             numsegs += 1
         m['TotalTime'] = totaltime
         m['NumSegments'] = numsegs
-        # Step through the segments backwards and find the payload delta from the next segment
-        prevLoad = 0
-        for i in range(m['NumSegments'], 0, -1):
-            seg = 'Segment %s' % i
-            load = m[seg]['CrewWeight'] + m[seg]['PayloadWeight'] + m[seg]['MiscWeight']
-            m[seg]['DeltaLoad'] = load - prevLoad
-            prevLoad = load
+
     
     def generatePowerCurve(self):
         m = self.mconfig
@@ -239,63 +236,38 @@ class Vehicle:
     def flyMission(self):
         m = self.mconfig
         v = self.vconfig
-        # we will simulate running the mission backwards, starting from an empty fuel tank
-        elapsed = m['TotalTime'] # elapsed time since mission start
-        totalFuel = 0 # total fuel used, pounds
-        w = v['Weights']['EmptyWeight']
-        maxGW = w
+        elapsed = 0 # elapsed time since mission start
+        fuelAvailable = self.GW - v['Weights']['EmptyWeight'] - v['Weights']['UsefulLoad'] # total fuel weight available, pounds
+        w = v['Weights']['EmptyWeight'] + fuelAvailable
+        totalFuel = 0.
         MR = v['Main Rotor'] # shorthand
         # step through all the segments specified in the mission file
-        for i in range(m['NumSegments'], 0, -1):
+        for i in range(0, m['NumSegments']):
             if not v['Sizing Results']['CouldTrim']:
                 break
-            seg = 'Segment %d' % i
+            seg = 'Segment %d' % (i+1)
             w += m[seg]['DeltaLoad'] # add or subtract and weight changes specified in the mission
-            if debug: print 'Starting at end of %s    adding load: %d     weight: %d' % (seg, m[seg]['DeltaLoad'], w)
-            # Since we're simulating backwards, we don't want to underestimate our sizing,
-            # by performing each step with the weight at the end of the step, rather than
-            # at the beginning.  So, we'll run the first two steps in each segment,
-            # providing us with a better estimate that we can use to re-run the first step,
-            # and making sure we don't underestimate the size, especially with a large
-            # simulation step.  Basically we're running each step with an estimate of what
-            # the weight will be at the beginning of it.
-            v['Condition']['Weight'] = w
-            v['Condition']['Segment'] = seg
-            def makeCurrent(section, key, vconfig):
-                vconfig['Condition'][key] = section[key]
-            m[seg].walk(makeCurrent, vconfig=v)
-            power = self.powerReq()
-            pvar(locals(), ('power', 'w'))
-            duration = v['Simulation']['TimeStep']
-            # Check if we're about to overfly the segment
-            if elapsed-v['Simulation']['TimeStep'] < m[seg]['StartTime']:
-                duration = elapsed - m[seg]['StartTime']
-            fuel = self.SFC(power) * power * (duration/60.)
-            nextW = w + fuel
-            # Now that we have our estimate, we can start looping through the segment for real.
-            while elapsed > m[seg]['StartTime']: # keep stepping through until we finish a segment
-                if debugFine: print 'StartTime: %f     Elapsed: %f     EndTime: %f' % (m[seg]['EndTime'], elapsed, m[seg]['EndTime'])
+            if debug: print 'Starting at %s    adding load: %d     weight: %d' % (seg, m[seg]['DeltaLoad'], w)
+            while elapsed < m[seg]['EndTime']: # keep stepping through until we finish a segment
+                if debugFine: print 'StartTime: %f     Elapsed: %f     EndTime: %f' % (m[seg]['StartTime'], elapsed, m[seg]['EndTime'])
                 duration = v['Simulation']['TimeStep']
                 # Check if we're about to overfly the segment
-                if elapsed-v['Simulation']['TimeStep'] < m[seg]['StartTime']:
-                    duration = elapsed - m[seg]['StartTime']
-                    if debugFine: print 'First segment bit, duration %s minutes' % duration
-                v['Condition']['Weight'] = nextW
+                if elapsed+v['Simulation']['TimeStep'] > m[seg]['EndTime']:
+                    duration = m[seg]['EndTime'] - elapsed
+                    if debugFine: print 'Last segment bit, duration %s minutes' % duration
+                v['Condition']['Weight'] = w
                 power = self.powerReq()
                 if math.isnan(power):
                     v['Sizing Results']['CouldTrim'] = False
                     print('breaking')
                     break
                 fuel = self.SFC(power) * power * (duration/60)
-                w += fuel
-                maxGW = max(w, maxGW)
-                nextW = w + fuel
+                w -= fuel
                 totalFuel += fuel
-                elapsed -= duration
+                elapsed += duration
             if debug: print('%s RfR: %.3f' % (seg, totalFuel/self.GW))
-        maxGW = max(maxGW, v['Weights']['EmptyWeight']+v['Weights']['UsefulLoad']+totalFuel)
-        if debug: print 'Finished!  Total fuel used: %s     Missize amount: %s     RfA: %.3f' % (totalFuel, self.GW-maxGW, 1-(v['Weights']['UsefulLoad']/self.GW)-v['Weights']['EmptyWeightFraction'])
-        self.misSize = self.GW-maxGW
+        self.misSize = fuelAvailable - totalFuel
+        if debug: print 'Finished!  Total fuel used: %s     Missize amount: %s' % (totalFuel, self.misSize)
         v['Sizing Results']['MisSize'] = self.misSize
 
     
@@ -370,7 +342,7 @@ if __name__ == '__main__':
     v.validate(vvdt)
     mvdt = Validator()
     m.validate(mvdt)
-    vehicle = Vehicle(v, m, 30000.)
+    vehicle = Vehicle(v, m, 25000.)
     vehicle.flyMission()
     vehicle.write()
     
