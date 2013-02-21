@@ -250,9 +250,9 @@ class Vehicle:
         VerticalLift_perRotor = VerticalLift_rotors / v['Main Rotor']['NumRotors']
 
         # calculate wing drag
-        if v['Wing']['WingArea']>0 and Speed>0:
+        if v['Wing']['WingArea']>0 and V>0:
             WingCl = VerticalLift_wing / (.5 * v['Wing']['WingArea'] * Density * V**2) # actual wing Cl
-            WingCd = v['Wing']['WingCD0'] + WingCl**2/(v['Wing']['OswaldEfficiency'] * math.pi * v['Wing']['WingAspectRatio']) + .0001*(WingCl/v['Wing']['WingClMax'])**100   # wing cd w/ stall
+            WingCd = v['Wing']['WingCD0'] + WingCl**2/(v['Wing']['OswaldEfficiency'] * math.pi * v['Wing']['WingAspectRatio'])# + .0001*(WingCl/v['Wing']['WingClMax'])**100   # wing cd w/ stall
         else:
             WingCl = 0.
             WingCd = 0.

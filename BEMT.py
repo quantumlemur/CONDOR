@@ -30,7 +30,7 @@ import math
 import numpy as np
 from scipy import interpolate
 
-debug = True
+debug = False
 
 def pvar(locals_, vars_):
     s = ['%s: %.3f' % (var, locals_[var]) for var in vars_]
@@ -163,17 +163,31 @@ class Rotor:
             # Tip loss modelby Prandlt (documented in Leishman)
             f = self.numblades/2. * (1-self.r/self.R)/(inflow/self.Vtip)
             F = 2./math.pi * np.arccos(np.exp(-f))
-            newinflow = F * thrust / (2.*rho*diskArea*np.sqrt((V*math.cos(alpha_TPP))**2 + (V*math.sin(alpha_TPP) + inflow)**2))
+            #F[~np.isfinite(F)] = 0.001
+            newinflow = thrust / (2.*rho*diskArea*np.sqrt((V*math.cos(alpha_TPP))**2 + (V*math.sin(alpha_TPP) + F*inflow)**2))
             change = abs(np.sum(newinflow) - np.sum(inflow)) / np.sum(inflow)
             inflow = newinflow
-            # import matplotlib.pyplot as plt
-            # f = plt.figure()
-            # f.add_subplot(111, projection='polar')
-            # c = plt.contourf(self.psi, self.r, inflow)
-            # plt.colorbar(c)
-            # plt.title('inflow')
-            # plt.show()
+        uniform = (inflow * self.r) / self.r
         inflow = inflow * (1. + (4./3.*V/inflow)/(1.2+V/inflow)*self.r/self.R*self.cospsi) # Glauert non-uniform inflow correction
+        # import matplotlib.pyplot as plt
+        # fig = plt.figure()
+        # fig.add_subplot(221, projection='polar')
+        # c = plt.contourf(self.psi, self.r, f)
+        # plt.colorbar(c)
+        # plt.title('f')
+        # fig.add_subplot(222, projection='polar')
+        # c = plt.contourf(self.psi, self.r, F)
+        # plt.colorbar(c)
+        # plt.title('F')
+        # fig.add_subplot(223, projection='polar')
+        # c = plt.contourf(self.psi, self.r, inflow)
+        # plt.colorbar(c)
+        # plt.title('inflow')
+        # fig.add_subplot(224, projection='polar')
+        # c = plt.contourf(self.psi, self.r, uniform)
+        # plt.colorbar(c)
+        # plt.title('uniform')
+        # plt.show()
         return inflow
     
     def trim(self, tolerancePct, V, speedOfSound, rho, Fx, Fz, maxSteps):
@@ -214,6 +228,7 @@ class Rotor:
         pitch = 999
         L = 0
         P = 0
+        lastP = 0
         loops = 0
         tol = tolerancePct / 100
         while not (abs(Fz-L)/Fz<tol and abs(lastP-P)/P<tol) and loops<maxSteps and np.isfinite(P) and abs(theta_0)<math.pi:
@@ -293,7 +308,7 @@ class Rotor:
         # import matplotlib.pyplot as plt
         # f = plt.figure()
         # f.add_subplot(331, projection='polar')
-        # c = plt.contourf(psi, r, dT)
+        # c = plt.contourf(psi, r, dT, np.arange(-.25, 2, 0.01))
         # plt.colorbar(c)
         # plt.title('dT')
 
@@ -372,8 +387,8 @@ if __name__ == '__main__':
     Vtip = 650. # ft/s
     R = 30. # feet
     omega = Vtip / R # rad/s
-    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, rootChord=1./7, taperRatio=.9, tipTwist=-8., rootCutout=.2, segments=15)
-    r = Rotor(b, psiSegments=15, Vtip=Vtip, radius=R, numblades=4)
+    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, rootChord=1./7, taperRatio=.9, tipTwist=-8., rootCutout=.2, segments=100)
+    r = Rotor(b, psiSegments=200, Vtip=Vtip, radius=R, numblades=4)
     # bladeArea = np.sum(b.chord * r.radius * b.dr * r.radius * r.numblades)
     # diskArea = math.pi * r.radius**2
     # solidity = bladeArea / diskArea
