@@ -31,8 +31,8 @@ class SizedVehicle:
         GW = (GWmax - GWmin) / 2 + GWmin
         choppah = Vehicle(v, m, GW) # http://www.youtube.com/watch?v=Xs_OacEq2Sk
         choppah.flyMission()
-        while GWmax-GWmin>v['Simulation']['GWTolerance'] and steps<v['Simulation']['MaxSteps'] and v['Sizing Results']['CouldTrim']:
-            if choppah.misSize > 0:
+        while GWmax-GWmin>v['Simulation']['GWTolerance'] and steps<v['Simulation']['MaxSteps']:
+            if (not choppah.vconfig['Sizing Results']['CouldTrim']) or choppah.misSize > 0: # If we can't trim it, treat it as if it's too heavy
                 GWmax = GW
             else:
                 GWmin = GW
@@ -45,15 +45,15 @@ class SizedVehicle:
                 pvar(locals(), ('steps', 'GWmax', 'GW', 'GWmin'))
         stopReason = ''
         goodRun = False
-        if GWmax-GWmin <= v['Simulation']['GWTolerance']:
-            stopReason = 'Converged to within specified tolerances'
-            goodRun = True
+        if not choppah.vconfig['Sizing Results']['CouldTrim']:
+            stopReason = 'Cound not trim at all desired conditions'
         elif steps >= v['Simulation']['MaxSteps']:
             stopReason = 'MaxSteps reached before convergance.  Stopped with bounds: %f  to  %f' % (GWmin, GWmax)
-        elif not v['Sizing Results']['CouldTrim']:
-            stopReason = 'Could not trim at all desired conditions'
+        elif GWmax-GWmin <= v['Simulation']['GWTolerance']:
+            stopReason = 'Converged to within specified tolerances'
+            goodRun = True
         else:
-            stopReason = 'You should never see this text.'
+            stopReason = 'You should never see this text'
         #choppah.generatePowerCurve()
         #choppah.findHoverCeiling()
         v['Simulation']['StopReason'] = stopReason

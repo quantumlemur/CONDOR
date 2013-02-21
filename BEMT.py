@@ -30,7 +30,7 @@ import math
 import numpy as np
 from scipy import interpolate
 
-debug = False
+debug = True
 
 def pvar(locals_, vars_):
     s = ['%s: %.3f' % (var, locals_[var]) for var in vars_]
@@ -129,6 +129,10 @@ class Rotor:
         self.chord = self.chord * radius
         self.r = self.r * radius
         self.dr = self.blade.dr * radius
+        # calculate the solidity
+        self.bladeArea = np.sum(self.chord) * self.dr * self.dpsi * numblades / (2*math.pi)
+        self.diskArea = math.pi * radius**2
+        self.solidity = self.bladeArea / self.diskArea
         # precompute and store the values of sin(psi) and cos(psi) since they're static and we're going to use them a lot later on
         self.cospsi = np.cos(self.psi)
         self.sinpsi = np.sin(self.psi)
@@ -156,24 +160,20 @@ class Rotor:
         inflow = math.sqrt(thrust / (2.*rho*diskArea))
         change = 999.
         while change>.01:
-            newinflow = thrust / (2.*rho*diskArea*math.sqrt((V*math.cos(alpha_TPP))**2 + (V*math.sin(alpha_TPP) + inflow)**2))
-            change = abs(newinflow - inflow) / inflow
+            # Tip loss modelby Prandlt (documented in Leishman)
+            f = self.numblades/2. * (1-self.r/self.R)/(inflow/self.Vtip)
+            F = 2./math.pi * np.arccos(np.exp(-f))
+            newinflow = F * thrust / (2.*rho*diskArea*np.sqrt((V*math.cos(alpha_TPP))**2 + (V*math.sin(alpha_TPP) + inflow)**2))
+            change = abs(np.sum(newinflow) - np.sum(inflow)) / np.sum(inflow)
             inflow = newinflow
-        #inflow_uniform_TPP = inflow #+ V*math.sin(alpha_TPP)
-        #lambda_uniform_TPP = inflow_uniform_TPP / self.Vtip
-        #mu = V / self.Vtip
-        #lambda_i = inflow / self.Vtip
-        #l = lambda_i + mu*math.sin(alpha_TPP)
-        #lambda_nonuniform = lambda_i * (1 + 4./3.*mu/l)/(1.2+mu/l)*self.r/self.R*self.cospsi
-        #if debug: pvar(locals(), ('mu', 'alpha_TPP', 'inflow', 'inflow_uniform_TPP', 'lambda_uniform_TPP'))
+            # import matplotlib.pyplot as plt
+            # f = plt.figure()
+            # f.add_subplot(111, projection='polar')
+            # c = plt.contourf(self.psi, self.r, inflow)
+            # plt.colorbar(c)
+            # plt.title('inflow')
+            # plt.show()
         inflow = inflow * (1. + (4./3.*V/inflow)/(1.2+V/inflow)*self.r/self.R*self.cospsi) # Glauert non-uniform inflow correction
-        # import matplotlib.pyplot as plt
-        # f = plt.figure()
-        # f.add_subplot(111, projection='polar')
-        # c = plt.contourf(self.psi, self.r, inflow)
-        # plt.colorbar(c)
-        # plt.title('inflow')
-        # plt.show()
         return inflow
     
     def trim(self, tolerancePct, V, speedOfSound, rho, Fx, Fz, maxSteps):
@@ -372,8 +372,8 @@ if __name__ == '__main__':
     Vtip = 650. # ft/s
     R = 30. # feet
     omega = Vtip / R # rad/s
-    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, rootChord=1./7, taperRatio=.9, tipTwist=-8., rootCutout=.2, segments=100)
-    r = Rotor(b, psiSegments=100, Vtip=Vtip, radius=R, numblades=4)
+    b = Blade(c81File='Config/S809_Cln.dat', skip_header=12, skip_footer=1, rootChord=1./7, taperRatio=.9, tipTwist=-8., rootCutout=.2, segments=15)
+    r = Rotor(b, psiSegments=15, Vtip=Vtip, radius=R, numblades=4)
     # bladeArea = np.sum(b.chord * r.radius * b.dr * r.radius * r.numblades)
     # diskArea = math.pi * r.radius**2
     # solidity = bladeArea / diskArea
@@ -403,7 +403,7 @@ if __name__ == '__main__':
     mu = V/Vtip
     Fhorizontal = .5 * rho * V**2 * f
     Fvertical = 35000. # pounds
-    print r.trim(tolerancePct=1., V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=1000)
+    power =  r.trim(tolerancePct=1., V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=1000)
     stopTime = clock()
     elapsed = stopTime - startTime
-    if debug: print('Elapsed time: %f' % elapsed)
+    if debug: pvar(locals(), ('power', 'elapsed'))
