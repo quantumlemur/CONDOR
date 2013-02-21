@@ -22,14 +22,11 @@ class Vehicle:
         m = self.mconfig
         GW = self.GW
         self.misSize = None
-        diskLoading = v['Main Rotor']['DiskLoading']
-        numRotors = v['Main Rotor']['NumRotors']
         v['Body']['FlatPlateDrag'] = 0.25 * GW**.5 * (1-v['Body']['DragTechImprovementFactor']) #0.015 * GW**0.67 # flat plate drag area
-        v['Main Rotor']['DiskArea'] = GW / numRotors / diskLoading # disk area per rotor
-        v['Main Rotor']['BladeArea'] =  v['Main Rotor']['DiskArea'] *  v['Main Rotor']['Solidity']
-        v['Main Rotor']['R'] = math.sqrt(v['Main Rotor']['DiskArea'] / math.pi) # main rotor radius
-        v['Main Rotor']['Omega'] = v['Main Rotor']['TipSpeed'] / v['Main Rotor']['R']
-        v['Wing']['WingSpan'] = v['Main Rotor']['R'] * v['Wing']['SpanRadiusRatio']
+        v['Main Rotor']['Omega'] = v['Main Rotor']['TipSpeed'] / v['Main Rotor']['Radius']
+        v['Main Rotor']['DiskArea'] = math.pi * v['Main Rotor']['Radius']**2 * v['Main Rotor']['NumRotors']
+        v['Main Rotor']['DiskLoading'] = GW / v['Main Rotor']['NumRotors'] / v['Main Rotor']['DiskArea']
+        v['Wing']['WingSpan'] = v['Main Rotor']['Radius'] * v['Wing']['SpanRadiusRatio']
         v['Wing']['WingArea'] = v['Wing']['WingSpan']**2 / v['Wing']['WingAspectRatio']
         v['Sizing Results']['MaxBladeLoadingSeen'] = 0
         v['Sizing Results']['BladeLoadingViolated'] = False
@@ -40,8 +37,8 @@ class Vehicle:
         v['Sizing Results']['GrossWeight'] = GW
         v['Sizing Results']['CouldTrim'] = True
         
-        self.blade = Blade(c81File='Config/%s'%v['Main Rotor']['AirfoilFile'], skip_header=0, skip_footer=0, rootChord=v['Main Rotor']['RootChord']/v['Main Rotor']['R'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout']/v['Main Rotor']['R'], segments=v['Simulation']['numBladeElementSegments'])
-        self.rotor = Rotor(self.blade, psiSegments=v['Simulation']['numBladeElementSegments'], Vtip=v['Main Rotor']['TipSpeed'], radius=v['Main Rotor']['R'], numblades=v['Main Rotor']['NumBlades'])
+        self.blade = Blade(c81File='Config/%s'%v['Main Rotor']['AirfoilFile'], skip_header=0, skip_footer=0, rootChord=v['Main Rotor']['RootChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout']/v['Main Rotor']['Radius'], segments=v['Simulation']['numBladeElementSegments'])
+        self.rotor = Rotor(self.blade, psiSegments=v['Simulation']['numBladeElementSegments'], Vtip=v['Main Rotor']['TipSpeed'], radius=v['Main Rotor']['Radius'], numblades=v['Main Rotor']['NumBlades'])
         self.scaleEngine()
         self.scaleWeights()
         self.setMission(m)

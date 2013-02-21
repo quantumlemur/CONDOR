@@ -1,4 +1,5 @@
 [Main Rotor]
+Radius = float()
 NumRotors = integer()
 DiskLoading = float()
 NumBlades = integer()
