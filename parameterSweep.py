@@ -60,7 +60,7 @@ tickresolution = 1000
 
 displayPlots = True
 saveData = True
-saveFigures = False
+saveFigures = True
 annotatePlots = True
 
 generateNewBaseline = True
