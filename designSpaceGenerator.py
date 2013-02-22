@@ -34,34 +34,34 @@ class Worker(multiprocessing.Process):
             self.results.put(flatdict)
 
 class Task(object):
-	def __init__(self, vconfig, mconfig):
-		self.vconfig = vconfig
-		self.mconfig = mconfig
-	def __call__(self):
-		vconfig = ConfigObj(self.vconfig)
-		mconfig = ConfigObj(self.mconfig)
-		for i in xrange(len(inputs)):
-			if type(vconfig[inputs[i][0]][inputs[i][1]]) is int:
-				val = random.randint(inputRanges[i][0], inputRanges[i][1])
-			else:
-				val = random.uniform(inputRanges[i][0], inputRanges[i][1])
-			vconfig[inputs[i][0]][inputs[i][1]] = val
-		vehicle = SizedVehicle(vconfig, mconfig)
-		sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object
-		sizedVehicle.generatePowerCurve()
-		sizedVehicle.findHoverCeiling()
-		sizedVehicle.findMaxRange()
-		sizedVehicle.findMaxSpeed()
-		v = sizedVehicle.vconfig
-		flatdict = {}
-		def flatten(section, key):
-			if key not in ['Speeds', 'PowersCruise', 'PowersSL']:
-				flatdict[key] = section[key]
-		v.walk(flatten)
-		if flatdict['GoodRun']:
-			return flatdict
-		else:
-			return None
+    def __init__(self, vconfig, mconfig):
+        self.vconfig = vconfig
+        self.mconfig = mconfig
+    def __call__(self):
+        vconfig = ConfigObj(self.vconfig)
+        mconfig = ConfigObj(self.mconfig)
+        for i in xrange(len(inputs)):
+            if type(vconfig[inputs[i][0]][inputs[i][1]]) is int:
+                val = random.randint(inputRanges[i][0], inputRanges[i][1])
+            else:
+                val = random.uniform(inputRanges[i][0], inputRanges[i][1])
+            vconfig[inputs[i][0]][inputs[i][1]] = val
+        vehicle = SizedVehicle(vconfig, mconfig)
+        sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object
+        sizedVehicle.generatePowerCurve()
+        sizedVehicle.findHoverCeiling()
+        sizedVehicle.findMaxRange()
+        sizedVehicle.findMaxSpeed()
+        v = sizedVehicle.vconfig
+        flatdict = {}
+        def flatten(section, key):
+            if key not in ['Speeds', 'PowersCruise', 'PowersSL']:
+                flatdict[key] = section[key]
+        v.walk(flatten)
+        if flatdict['GoodRun']:
+            return flatdict
+        else:
+            return None
 
 def showProgress(name, startTime, currentTime, currentRow, totalRows):
     elapsedTime = currentTime - startTime
@@ -85,59 +85,59 @@ def fmtTime(total):
     return '%02d:%02d:%02d' % (hours, minutes, seconds)
 
 if __name__ == '__main__':
-	startTime = time.clock()
-	v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
-	m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
-	vvdt = Validator()
-	v.validate(vvdt)
-	mvdt = Validator()
-	m.validate(mvdt)
-	tasks = multiprocessing.JoinableQueue()
-	results = multiprocessing.Queue()
-	numworkers = multiprocessing.cpu_count() * 2
-	workers = [Worker(tasks, results) for i in xrange(numworkers)]
-	for w in workers:
-	    w.start()
-	# load up the queue with jobs
-	for i in xrange(poolSize):
-		tasks.put(Task(v, m))
+    startTime = time.clock()
+    v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
+    m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
+    vvdt = Validator()
+    v.validate(vvdt)
+    mvdt = Validator()
+    m.validate(mvdt)
+    tasks = multiprocessing.JoinableQueue()
+    results = multiprocessing.Queue()
+    numworkers = multiprocessing.cpu_count() * 2
+    workers = [Worker(tasks, results) for i in xrange(numworkers)]
+    for w in workers:
+        w.start()
+    # load up the queue with jobs
+    for i in xrange(poolSize):
+        tasks.put(Task(v, m))
 
-	print 'All tasks queued!'
+    print 'All tasks queued!'
 
-	# put the endcaps on the queue to shut the workers down
-	for i in xrange(numworkers):
-		tasks.put(None)
-	# get the results
-	startTime = time.clock()
-	output = {}
-	goodResults = 0
-	for i in xrange(poolSize):
-		if i>0: showProgress('design space', startTime, time.clock(), i, poolSize)
-		flatdict = results.get()
-		if flatdict is not None:
-			missingOutput = output.keys()
-			for key, value in flatdict.iteritems():
-				if key in output:
-					output[key].append(value)
-					missingOutput.remove(key)
-				else:
-					newvals = [0] * goodResults
-					newvals.append(value)
-					output[key] = newvals
-			for missing in missingOutput:
-				output[missing].append(float('nan'))
-			goodResults += 1
-	# join/close the tasks queue
-	tasks.join()
+    # put the endcaps on the queue to shut the workers down
+    for i in xrange(numworkers):
+        tasks.put(None)
+    # get the results
+    startTime = time.clock()
+    output = {}
+    goodResults = 0
+    for i in xrange(poolSize):
+        if i>0: showProgress('design space', startTime, time.clock(), i, poolSize)
+        flatdict = results.get()
+        if flatdict is not None:
+            missingOutput = output.keys()
+            for key, value in flatdict.iteritems():
+                if key in output:
+                    output[key].append(value)
+                    missingOutput.remove(key)
+                else:
+                    newvals = [0] * goodResults
+                    newvals.append(value)
+                    output[key] = newvals
+            for missing in missingOutput:
+                output[missing].append(float('nan'))
+            goodResults += 1
+    # join/close the tasks queue
+    tasks.join()
 
-	print 'Writing out the data!'
-	# write out the data
-	keys = output.keys()
-	with open('Output/designSpace.csv', 'wb') as f:
-		writer = csv.writer(f, delimiter=',')
-		writer.writerow(keys)
-		for i in xrange(len(output[keys[0]])):
-			writer.writerow([output[key][i] for key in keys])
+    print 'Writing out the data!'
+    # write out the data
+    keys = output.keys()
+    with open('Output/designSpace.csv', 'wb') as f:
+        writer = csv.writer(f, delimiter=',')
+        writer.writerow(keys)
+        for i in xrange(len(output[keys[0]])):
+            writer.writerow([output[key][i] for key in keys])
 
 
 
