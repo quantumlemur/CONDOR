@@ -1,5 +1,5 @@
 import sys
-import math as m
+import math
 import numpy as np
 from time import clock
 import scipy.ndimage
@@ -12,7 +12,7 @@ from configobj import ConfigObj
 from validate import Validator
 
 
-debug = True
+debug = False
 
 def pvar(locals_, vars_):
     s = ['%s: %d' % (var, locals_[var]) for var in vars_]
@@ -25,8 +25,8 @@ TipSpeedrange = [400, 800]
 GWrange = [15000, 45000]
 
 
-numPerParam = 10
-sweeplimits = [[100, 250], [300, 1000]] # speed, range
+numPerParam = 4
+sweeplimits = [[100, 200], [300, 1000]] # speed, range
 baselineRange = 544.
 baselineSpeed = 153.
 
@@ -140,7 +140,6 @@ def GenerateBaselineData():
     SPEED, RANGE, = np.meshgrid(sweepspreads[0], sweepspreads[1])
     GW = np.zeros(RANGE.shape)
     #MCP = np.zeros(RANGE.shape)
-    
     num = output.shape[0]
     tic = clock()
     for i in xrange(GW.shape[0]):
@@ -153,13 +152,20 @@ def GenerateBaselineData():
             v['Wing']['MaxSpeed'] = (float) (SPEED[i][j])
             vehicle = SizedVehicle(v, m)
             vehicle.sizeMission()
-            GW[i][j] = v['Sizing Results']['SizedGrossWeight']
+            GW[i][j] = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
+            if debug:
+                s = SPEED[i][j]
+                r = RANGE[i][j]
+                gw = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
+                gw = 0 if math.isnan(gw) else gw
+                pvar(locals(), ('s', 'r', 'gw'))
             #MCP[i][j] = v['Powerplant']['MCP']
     print('')
+    #GW[~np.isfinite(GW)] = 0
     # filter data
-    SPEED = scipy.ndimage.zoom(SPEED, 3)
-    RANGE = scipy.ndimage.zoom(RANGE, 3)
-    GW = scipy.ndimage.zoom(GW, 3)
+    # SPEED = scipy.ndimage.zoom(SPEED, 3)
+    # RANGE = scipy.ndimage.zoom(RANGE, 3)
+    # GW = scipy.ndimage.zoom(GW, 3)
     #MCP = scipy.ndimage.zoom(MCP, 3)
     
     GWN = np.arange((int)(GW[np.isfinite(GW)].min())/tickresolution*tickresolution-GWticklowpadding, (int)(GW[np.isfinite(GW)].max())/tickresolution*tickresolution+GWtickspacing+GWtickhighpadding, GWtickspacing)
@@ -207,13 +213,13 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
                 v[section[k]][var[k]] = value[k]
             vehicle = SizedVehicle(v, m)
             vehicle.sizeMission()
-            GW[i][j] = v['Sizing Results']['SizedGrossWeight']
+            GW[i][j] = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
             #MCP[i][j] = v['Powerplant']['MCP']
     print('')
     # filter data
-    SPEED = scipy.ndimage.zoom(SPEED, 3)
-    RANGE = scipy.ndimage.zoom(RANGE, 3)
-    GW = scipy.ndimage.zoom(GW, 3)
+    # SPEED = scipy.ndimage.zoom(SPEED, 3)
+    # RANGE = scipy.ndimage.zoom(RANGE, 3)
+    # GW = scipy.ndimage.zoom(GW, 3)
     #MRP = scipy.ndimage.zoom(MRP, 3)
     
     GWN = baseline[3]
@@ -334,17 +340,17 @@ def SweepContours(baseline):
                     v[section][sweepVar] = Spread[DLi]
                     vehicle = SizedVehicle(v, m)
                     vehicle.sizeMission()
-                    GW[DLi][i][j] = v['Sizing Results']['SizedGrossWeight']
-                    MCP[DLi][i][j] = v['Powerplant']['MCP']
-                    extraContours[DLi][i][j] = v['Sizing Results'][extraContour]
-            smoothedGW[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
-            smoothedMCP[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
+                    GW[DLi][i][j] = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
+                    MCP[DLi][i][j] = vehicle.vconfig['Powerplant']['MCP']
+                    extraContours[DLi][i][j] = vehicle.vconfig['Sizing Results'][extraContour]
+            # smoothedGW[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
+            # smoothedMCP[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
         print('')
         
-        SPEED = scipy.ndimage.zoom(SPEED, 3)
-        RANGE = scipy.ndimage.zoom(RANGE, 3)
-        MCP = smoothedMCP
-        GW = smoothedGW
+        # SPEED = scipy.ndimage.zoom(SPEED, 3)
+        # RANGE = scipy.ndimage.zoom(RANGE, 3)
+        # MCP = smoothedMCP
+        # GW = smoothedGW
         extraContours = scipy.ndimage.zoom(extraContours, 3)
 
         GWN = baseline[3]

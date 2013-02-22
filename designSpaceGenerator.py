@@ -75,7 +75,6 @@ if __name__ == '__main__':
 	v.validate(vvdt)
 	mvdt = Validator()
 	m.validate(mvdt)
-	v2 = ConfigObj(v)
 
 
 

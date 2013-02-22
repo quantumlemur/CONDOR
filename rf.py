@@ -3,8 +3,8 @@ from vehicle import Vehicle
 from configobj import ConfigObj
 
 
-debug = True
-writeOutput = True
+debug = False
+writeOutput = False
 
 def pvar(locals_, vars_):
     s = ['%s: %d' % (var, locals_[var]) for var in vars_]
@@ -72,15 +72,18 @@ class SizedVehicle:
             choppah.vconfig['Sizing Results']['SizedGrossWeight'] = float('nan')
         if debug: print('Optimized: %s     %s' % (goodRun, stopReason))
         if writeOutput: choppah.write()
+        self.vconfig = choppah.vconfig
+        self.mconfig = choppah.mconfig
         return choppah
 
 if __name__ == '__main__':
+    debug = True
     from time import clock
     from configobj import ConfigObj
     from validate import Validator
     startTime = clock()
     v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
-    m = ConfigObj('Config/mission.cfg', configspec='Config/mission.configspec')
+    m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
     v.validate(vvdt)
     mvdt = Validator()
