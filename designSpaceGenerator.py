@@ -10,7 +10,7 @@ from rf import SizedVehicle
 from configobj import ConfigObj
 from validate import Validator
 
-poolSize = 10#0 #12000  # on my computer, I run about 25 cases/minute, or 1500/hour
+poolSize = 1000 #000  # on my computer, I run about 25 cases/minute, or 1500/hour
 
 inputs = (('Wing', 'SpanRadiusRatio'), ('Wing', 'WingAspectRatio'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'TaperRatio'), ('Main Rotor', 'TipTwist'), ('Main Rotor', 'Radius'), ('Main Rotor', 'TipSpeed'), ('Main Rotor', 'RootChord'), ('Main Rotor', 'NumBlades'))
 inputRanges = ((0., 4.), (3., 9.), (0, 2), (.6, 1.), (-16, -4), (15., 35.), (400., 800.), (.5, 3.), (2, 6))
@@ -58,7 +58,10 @@ class Task(object):
 			if key not in ['Speeds', 'PowersCruise', 'PowersSL']:
 				flatdict[key] = section[key]
 		v.walk(flatten)
-		return flatdict
+		if flatdict['GoodRun']:
+			return flatdict
+		else:
+			return None
 
 def showProgress(name, startTime, currentTime, currentRow, totalRows):
     elapsedTime = currentTime - startTime
@@ -77,8 +80,8 @@ def showProgress(name, startTime, currentTime, currentRow, totalRows):
 
 def fmtTime(total):
     hours = (int) (total / 60 / 60)
-    minutes = (int) (total / 60)
-    seconds = (int) (total - minutes*60)
+    minutes = (int) (total / 60 - hours*60)
+    seconds = (int) (total - hours*60*60 - minutes*60)
     return '%02d:%02d:%02d' % (hours, minutes, seconds)
 
 if __name__ == '__main__':
@@ -107,20 +110,23 @@ if __name__ == '__main__':
 	# get the results
 	startTime = time.clock()
 	output = {}
+	goodResults = 0
 	for i in xrange(poolSize):
 		if i>0: showProgress('design space', startTime, time.clock(), i, poolSize)
 		flatdict = results.get()
-		missingOutput = output.keys()
-		for key, value in flatdict.iteritems():
-			if key in output:
-				output[key].append(value)
-				missingOutput.remove(key)
-			else:
-				newvals = [0] * i
-				newvals.append(value)
-				output[key] = newvals
-		for missing in missingOutput:
-			output[missing].append(float('nan'))
+		if flatdict is not None:
+			missingOutput = output.keys()
+			for key, value in flatdict.iteritems():
+				if key in output:
+					output[key].append(value)
+					missingOutput.remove(key)
+				else:
+					newvals = [0] * goodResults
+					newvals.append(value)
+					output[key] = newvals
+			for missing in missingOutput:
+				output[missing].append(float('nan'))
+			goodResults += 1
 	# join/close the tasks queue
 	tasks.join()
 
@@ -130,7 +136,7 @@ if __name__ == '__main__':
 	with open('Output/designSpace.csv', 'wb') as f:
 		writer = csv.writer(f, delimiter=',')
 		writer.writerow(keys)
-		for i in xrange(poolSize):
+		for i in xrange(len(output[keys[0]])):
 			writer.writerow([output[key][i] for key in keys])
 
 

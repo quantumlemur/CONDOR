@@ -4,7 +4,7 @@ from configobj import ConfigObj
 
 
 debug = False
-writeOutput = True
+writeOutput = False
 
 def pvar(locals_, vars_):
     s = ['%s: %d' % (var, locals_[var]) for var in vars_]
