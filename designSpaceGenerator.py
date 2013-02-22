@@ -1,7 +1,8 @@
+import sys
+import time
 import Queue
 import random
 import numpy as np
-from time import clock
 import multiprocessing
 
 from rf import SizedVehicle
@@ -34,8 +35,16 @@ class Worker(multiprocessing.Process):
 
 class Task(object):
 	def __init__(self, vconfig, mconfig):
-		self.vconfig = ConfigObj(vconfig.copy)
-		self.mconfig = ConfigObj(mconfig.copy)
+		self.vconfig = ConfigObj(vconfig)
+		self.mconfig = ConfigObj(mconfig)
+	def __call__(self):
+		vehicle = SizedVehicle(self.vconfig, self.mconfig)
+        sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object
+	    sizedVehicle.generatePowerCurve()
+	    sizedVehicle.findHoverCeiling()
+	    sizedVehicle.findMaxRange()
+	    sizedVehicle.findMaxSpeed()
+	    return sizedVehicle.vconfig
 
 def showProgress(name, startTime, currentTime, currentRow, totalRows):
     elapsedTime = currentTime - startTime
@@ -59,20 +68,22 @@ def fmtTime(total):
     return '%02d:%02d:%02d' % (hours, minutes, seconds)
 
 if __name__ == '__main__':
-	startTime = clock()
+	startTime = time.clock()
+	v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
+	m = ConfigObj('Config/mission.cfg', configspec='Config/mission.configspec')
+	vvdt = Validator()
+	v.validate(vvdt)
+	mvdt = Validator()
+	m.validate(mvdt)
+	v2 = ConfigObj(v)
+
+
+
+
+
 	# tasks = multiprocessing.JoinableQueue()
  #    results = multiprocessing.Queue()
  #    numworkers = multiprocessing.cpu_count() * 2
  #    workers = [Worker(tasks, results) for i in xrange(numworkers)]
  #    for w in workers:
  #        w.start()
-    v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
-    m = ConfigObj('Config/mission.cfg', configspec='Config/mission.configspec')
-    vvdt = Validator()
-    v.validate(vvdt)
-    mvdt = Validator()
-    m.validate(mvdt)
-    v2 = ConfigObj(v)
-    v['Main Rotor']['Radius'] = 9999999999.
-    print v['Main Rotor']['Radius']
-    print v2['Main Rotor']['Radius']

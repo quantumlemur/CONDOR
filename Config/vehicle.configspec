@@ -49,6 +49,7 @@ TransmissionEfficiency = float()
 
 [Body]
 DragTechImprovementFactor = float()
+DownwashFactor = float()
 
 [Antitorque]
 AntitorquePowerFactor = float()
