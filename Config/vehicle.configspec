@@ -1,13 +1,18 @@
 [Main Rotor]
+Radius = float()
 NumRotors = integer()
 DiskLoading = float()
+NumBlades = integer()
 Solidity = float()
 TipSpeed = float()
 Kint = float()
 Kov = float()
-HeliEfficiency = float()
-CD0 = float()
-TipLossFactor = float()
+AirfoilFile = string()
+DragDivergenceMachNumber = float()
+RootChord = float()
+TaperRatio = float()
+TipTwist = float()
+RootCutout = float()
 
 [Weights]
 BaselineGrossWeight = float()
@@ -29,17 +34,25 @@ MaxSpeed = float()
 WingClMax = float()
 WingCD0 = float()
 OswaldEfficiency = float()
+MaxWingLoadProportion = float()
 
 [Aux Propulsion]
+NumAuxProps = integer()
 PropEfficiency = float()
+PropulsionFactor = float()
 
 [Powerplant]
 BaselineMRP = float()
 BaselineSFC = float()
 SFCTechImprovementFactor = float()
+TransmissionEfficiency = float()
 
 [Body]
 DragTechImprovementFactor = float()
+DownwashFactor = float()
+
+[Antitorque]
+AntitorquePowerFactor = float()
 
 [Simulation]
 TimeStep = float()
@@ -48,4 +61,10 @@ StartGW = float()
 GWMin = float()
 GWmax = float()
 GWTolerance = float()
-UseBEMT = boolean()
+TrimAccuracyPercentage = float()
+numBladeElementSegments = integer()
+PowerCurveResolution = float()
+HoverCeilingResolution = float()
+
+[Condition]
+CruiseAltitude = float()

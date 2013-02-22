@@ -1,5 +1,5 @@
 import sys
-import math as m
+import math
 import numpy as np
 from time import clock
 import scipy.ndimage
@@ -12,7 +12,7 @@ from configobj import ConfigObj
 from validate import Validator
 
 
-debug = True
+debug = False
 
 def pvar(locals_, vars_):
     s = ['%s: %d' % (var, locals_[var]) for var in vars_]
@@ -26,7 +26,7 @@ GWrange = [15000, 45000]
 
 
 numPerParam = 10
-sweeplimits = [[100, 250], [300, 1000]] # speed, range
+sweeplimits = [[100, 200], [300, 1000]] # speed, range
 baselineRange = 544.
 baselineSpeed = 153.
 
@@ -58,9 +58,9 @@ GWtickhighpadding = 4000
 MRPtickspacing = 250
 tickresolution = 1000
 
-displayPlots = False
+displayPlots = True
 saveData = True
-saveFigures = False
+saveFigures = True
 annotatePlots = True
 
 generateNewBaseline = False
@@ -73,7 +73,7 @@ plotWeightImprovements = False
 plotDragImprovements = False
 plotSFCImprovements = False
 plotAllImprovements = False
-plotSweepContours = ['DiskLoading']#['Solidity', 'DiskLoading', 'TipSpeed'] # 'SpanRadiusRatio'
+plotSweepContours = ['TipSpeed'] #['DiskLoading']#['Solidity', 'DiskLoading', 'TipSpeed'] # 'SpanRadiusRatio'
 plotExtraContours = True
 
 
@@ -140,7 +140,6 @@ def GenerateBaselineData():
     SPEED, RANGE, = np.meshgrid(sweepspreads[0], sweepspreads[1])
     GW = np.zeros(RANGE.shape)
     #MCP = np.zeros(RANGE.shape)
-    
     num = output.shape[0]
     tic = clock()
     for i in xrange(GW.shape[0]):
@@ -153,16 +152,23 @@ def GenerateBaselineData():
             v['Wing']['MaxSpeed'] = (float) (SPEED[i][j])
             vehicle = SizedVehicle(v, m)
             vehicle.sizeMission()
-            GW[i][j] = v['Sizing Results']['SizedGrossWeight']
+            GW[i][j] = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
+            if debug:
+                s = SPEED[i][j]
+                r = RANGE[i][j]
+                gw = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
+                gw = 0 if math.isnan(gw) else gw
+                pvar(locals(), ('s', 'r', 'gw'))
             #MCP[i][j] = v['Powerplant']['MCP']
     print('')
+    #GW[~np.isfinite(GW)] = 0
     # filter data
-    SPEED = scipy.ndimage.zoom(SPEED, 3)
-    RANGE = scipy.ndimage.zoom(RANGE, 3)
-    GW = scipy.ndimage.zoom(GW, 3)
+    # SPEED = scipy.ndimage.zoom(SPEED, 3)
+    # RANGE = scipy.ndimage.zoom(RANGE, 3)
+    # GW = scipy.ndimage.zoom(GW, 3)
     #MCP = scipy.ndimage.zoom(MCP, 3)
     
-    GWN = np.arange((int)(GW.min())/tickresolution*tickresolution-GWticklowpadding, (int)(GW.max())/tickresolution*tickresolution+GWtickspacing+GWtickhighpadding, GWtickspacing)
+    GWN = np.arange((int)(GW[np.isfinite(GW)].min())/tickresolution*tickresolution-GWticklowpadding, (int)(GW[np.isfinite(GW)].max())/tickresolution*tickresolution+GWtickspacing+GWtickhighpadding, GWtickspacing)
     
     # find baseline datapoint
     m = ConfigObj(mconfig)
@@ -207,13 +213,13 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
                 v[section[k]][var[k]] = value[k]
             vehicle = SizedVehicle(v, m)
             vehicle.sizeMission()
-            GW[i][j] = v['Sizing Results']['SizedGrossWeight']
+            GW[i][j] = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
             #MCP[i][j] = v['Powerplant']['MCP']
     print('')
     # filter data
-    SPEED = scipy.ndimage.zoom(SPEED, 3)
-    RANGE = scipy.ndimage.zoom(RANGE, 3)
-    GW = scipy.ndimage.zoom(GW, 3)
+    # SPEED = scipy.ndimage.zoom(SPEED, 3)
+    # RANGE = scipy.ndimage.zoom(RANGE, 3)
+    # GW = scipy.ndimage.zoom(GW, 3)
     #MRP = scipy.ndimage.zoom(MRP, 3)
     
     GWN = baseline[3]
@@ -301,6 +307,11 @@ def SweepContours(baseline):
             extraContour = 'Nothing'
             section = 'Wing'
             title = '%.1f Ratio of Wing Span to Rotor Radius'
+        elif sweepVar == 'Radius':
+            Spread = [25., 30., 35., 40.]
+            extraContour = 'Nothing'
+            section = 'Main Rotor'
+            title = '%d m Radius'
         
         sweepvars = ['Speed', 'Range']
         # pick the spreads of the variables we're going to sweep
@@ -333,19 +344,20 @@ def SweepContours(baseline):
                     v['Wing']['MaxSpeed'] = (float) (SPEED[i][j])
                     v[section][sweepVar] = Spread[DLi]
                     vehicle = SizedVehicle(v, m)
-                    vehicle.sizeMission()
-                    GW[DLi][i][j] = v['Sizing Results']['SizedGrossWeight']
-                    MCP[DLi][i][j] = v['Powerplant']['MCP']
-                    extraContours[DLi][i][j] = v['Sizing Results'][extraContour]
-            smoothedGW[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
-            smoothedMCP[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
+                    newvehicle = vehicle.sizeMission()
+                    newvehicle.findHoverCeiling()
+                    GW[DLi][i][j] = newvehicle.vconfig['Sizing Results']['SizedGrossWeight']
+                    MCP[DLi][i][j] = newvehicle.vconfig['Powerplant']['MCP']
+                    extraContours[DLi][i][j] = newvehicle.vconfig['Performance'][extraContour]
+            # smoothedGW[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
+            # smoothedMCP[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
         print('')
         
-        SPEED = scipy.ndimage.zoom(SPEED, 3)
-        RANGE = scipy.ndimage.zoom(RANGE, 3)
-        MCP = smoothedMCP
-        GW = smoothedGW
-        extraContours = scipy.ndimage.zoom(extraContours, 3)
+        # SPEED = scipy.ndimage.zoom(SPEED, 3)
+        # RANGE = scipy.ndimage.zoom(RANGE, 3)
+        # MCP = smoothedMCP
+        # GW = smoothedGW
+        # extraContours = scipy.ndimage.zoom(extraContours, 3)
 
         GWN = baseline[3]
         plt.figure(num=None, figsize=(figW, figH), dpi=figDPI, facecolor='w', edgecolor='k')
@@ -400,10 +412,11 @@ def PerformanceCurve():
     m = ConfigObj(mconfig)
     choppah = Vehicle(v, m, 25000)
     choppah.generatePowerCurve()
+    choppah.write()
     
     plt.figure(num=None, figsize=(figW/1.5, figH/1.5), dpi=figDPI, facecolor='w', edgecolor='k')
-    plt.plot(choppah.speeds, choppah.powersSL)
-    plt.plot(choppah.speeds, choppah.powersCruise)
+    plt.plot(choppah.vconfig['Power Curve']['Speeds'], choppah.vconfig['Power Curve']['PowersSL'])
+    plt.plot(choppah.vconfig['Power Curve']['Speeds'], choppah.vconfig['Power Curve']['PowersCruise'])
     MCPspeeds = [0, 200]
     MCPSL = [2043*2, 2043*2]
     MCPalt = [3104, 3104]
@@ -543,8 +556,8 @@ def SolidityContour(vconfig, mconfig, num, baseline):
                 MRP[DLi][i][j] = v['Powerplant']['MCP']
     print('')
     plt.figure(num=None, figsize=(figW, figH), dpi=figDPI, facecolor='w', edgecolor='k')
-    GWN = np.arange((int)(GW.min()/1000)*1000, (int)((GW.max()/1000)+1)*1000, 2000)
-    MRPN = np.arange((int)(MRP.min()/250)*250, (int)((MRP.max()/250)+1)*250, 250)
+    GWN = np.arange((int)(GW[np.isfinite(GW)].min()/1000)*1000, (int)((GW[np.isfinite(GW)].max()/1000)+1)*1000, 2000)
+    MRPN = np.arange((int)(MRP[np.isfinite(MRP)].min()/250)*250, (int)((MRP[np.isfinite(MRP)].max()/250)+1)*250, 250)
     for DLi in xrange(len(Spread)):
         plot = plt.subplot(2, 2, DLi+1)
         plot.tick_params(labelsize=axislabelfontsize)
@@ -669,9 +682,9 @@ if __name__ == '__main__':
     #blah = SizedVehicle(v, m)
     if generateNewBaseline:
         baseline = GenerateBaselineData()
-        np.save('Config/baseline.npy', baseline)
+        np.save('Output/baseline.npy', baseline)
     else:
-        baseline = np.load('Config/baseline.npy')
+        baseline = np.load('Output/baseline.npy')
     if plotScalingPlots: ScalingPlots()
     if plotPerformanceCurve: PerformanceCurve()
     if plotRangeSpeedContour: RangeSpeedContour(baseline)
