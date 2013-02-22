@@ -1,10 +1,9 @@
-import ConfigParser
-
-
+import math
 from vehicle import Vehicle
+from configobj import ConfigObj
 
 
-debug = False
+debug = True
 writeOutput = True
 
 def pvar(locals_, vars_):
@@ -29,44 +28,51 @@ class SizedVehicle:
         steps = 0
         GWmin = v['Simulation']['GWMin']
         GWmax = v['Simulation']['GWmax']
+        viableCandidate = False
         GW = (GWmax - GWmin) / 2 + GWmin
         choppah = Vehicle(v, m, GW) # http://www.youtube.com/watch?v=Xs_OacEq2Sk
         choppah.flyMission()
-        while GWmax-GWmin>v['Simulation']['GWTolerance'] and steps<v['Simulation']['MaxSteps']:
-            if (not choppah.vconfig['Sizing Results']['CouldTrim']) or choppah.misSize > 0: # If we can't trim it, treat it as if it's too heavy
-                GWmax = GW
-            else:
+        while not (GWmax-GWmin<choppah.vconfig['Simulation']['GWTolerance']) and steps<choppah.vconfig['Simulation']['MaxSteps']:
+            # Depending on whether we're oversized or undersized for the mission, adjust our GW limits accordingly
+            if choppah.misSize < 0: # lower the max if we're either too heavy to trim or if we're trimmed but oversized for the mission
+                # here we are undersized and trimmable, and will increase the GW minimum
                 GWmin = GW
+            else:
+                # here we are oversized or untrimmable, and will decrease the GW maximum
+                GWmax = GW
+                if choppah.vconfig['Sizing Results']['CouldTrim']: # if we're oversized but trimmable, then we know we have a viable candidate
+                    viableCandidate = True
             GW = (GWmax - GWmin) / 2 + GWmin
             choppah = Vehicle(v, m, GW)
             choppah.flyMission()
             steps += 1
             if debug:
-                EWf = choppah.vconfig['Weights']['EmptyWeightFraction']
-                pvar(locals(), ('steps', 'GWmax', 'GW', 'GWmin'))
+                couldTrim = choppah.vconfig['Sizing Results']['CouldTrim']
+                couldMission = choppah.misSize > 0
+                ms = 0 if math.isnan(choppah.misSize) else choppah.misSize
+                pvar(locals(), ('steps', 'GWmax', 'GW', 'GWmin', 'couldTrim', 'couldMission', 'ms', 'viableCandidate'))
         stopReason = ''
         goodRun = False
-        if not choppah.vconfig['Sizing Results']['CouldTrim']:
-            stopReason = 'Cound not trim at all desired conditions'
-        elif steps >= v['Simulation']['MaxSteps']:
+        if not viableCandidate:
+            stopReason = 'Cound not trim at all conditions at any mission-capable weight'
+        elif steps >= choppah.vconfig['Simulation']['MaxSteps']:
             stopReason = 'MaxSteps reached before convergance.  Stopped with bounds: %f  to  %f' % (GWmin, GWmax)
-        elif GWmax-GWmin <= v['Simulation']['GWTolerance']:
+        elif (GWmax-GWmin <= choppah.vconfig['Simulation']['GWTolerance']) and choppah.vconfig['Sizing Results']['CouldTrim']:
             stopReason = 'Converged to within specified tolerances'
             goodRun = True
         else:
-            stopReason = 'You should never see this text'
-        #choppah.generatePowerCurve()
-        #choppah.findHoverCeiling()
-        v['Simulation']['StopReason'] = stopReason
-        v['Simulation']['GoodRun'] = goodRun
+            stopReason = 'Stopped with some other reason'
+        choppah.vconfig['Sizing Results']['StopReason'] = stopReason
+        choppah.vconfig['Sizing Results']['GoodRun'] = goodRun
         if goodRun:
-            v['Sizing Results']['Optimized'] = True
-            v['Sizing Results']['SizedGrossWeight'] = GW
+            choppah.vconfig['Sizing Results']['Optimized'] = True
+            choppah.vconfig['Sizing Results']['SizedGrossWeight'] = GW
         else:
-            v['Sizing Results']['Optimized'] = False
-            v['Sizing Results']['SizedGrossWeight'] = float('nan')
+            choppah.vconfig['Sizing Results']['Optimized'] = False
+            choppah.vconfig['Sizing Results']['SizedGrossWeight'] = float('nan')
         if debug: print('Optimized: %s     %s' % (goodRun, stopReason))
         if writeOutput: choppah.write()
+        return choppah
 
 if __name__ == '__main__':
     from time import clock

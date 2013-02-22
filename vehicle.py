@@ -23,7 +23,7 @@ class Vehicle:
         v = self.vconfig
         m = self.mconfig
         GW = self.GW
-        self.misSize = None
+        self.misSize = float('nan')
         v['Body']['FlatPlateDrag'] = 0.27 * GW**.5 * (1-v['Body']['DragTechImprovementFactor']) #0.015 * GW**0.67 # flat plate drag area
         v['Main Rotor']['Omega'] = v['Main Rotor']['TipSpeed'] / v['Main Rotor']['Radius']
         v['Main Rotor']['DiskArea'] = math.pi * v['Main Rotor']['Radius']**2 * v['Main Rotor']['NumRotors']
@@ -34,6 +34,7 @@ class Vehicle:
         v['Weights']['EmptyWeight'] = GW * v['Weights']['BaselineEmptyWeightFraction']
         v['Sizing Results']['GrossWeight'] = GW
         v['Sizing Results']['CouldTrim'] = True
+        v['Sizing Results']['MisSize'] = float('nan')
         
         self.blade = Blade(c81File='Config/%s'%v['Main Rotor']['AirfoilFile'], skip_header=0, skip_footer=0, rootChord=v['Main Rotor']['RootChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout']/v['Main Rotor']['Radius'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
         self.rotor = Rotor(self.blade, psiSegments=v['Simulation']['numBladeElementSegments'], Vtip=v['Main Rotor']['TipSpeed'], radius=v['Main Rotor']['Radius'], numblades=v['Main Rotor']['NumBlades'])
@@ -167,6 +168,13 @@ class Vehicle:
     def powerAvailable(self, altitude):
         return self.vconfig['Powerplant']['MCP'] * self.density(altitude) / self.density(0)#(-2e-5*altitude + 1)
 
+    def SFC(self, power):
+        """Returns SFC at a given output power."""
+        v = self.vconfig
+        # TODO:  Insert partial-power SFC
+        return v['Powerplant']['SFC']
+        #return -0.00001495*power + .4904 # right now this is the GE CT7-8 engine, in the S-92.  Put it back to a generic scaling using v['Powerplant']['SFC'] !
+    
     def speedOfSound(self, density):
         return 1026. # yeah... replace this with an equation
 
@@ -206,8 +214,7 @@ class Vehicle:
                 maxSpeedPower = powers[i]
         v['Performance']['MaxSpeed'] = maxSpeed
         v['Performance']['PowerAtMaxSpeed'] = maxSpeedPower
-
-    
+        
     def scaleEngine(self):
         """Scales the engine for high hot hover and fast cruise."""
         v = self.vconfig
@@ -238,13 +245,6 @@ class Vehicle:
         v['Powerplant']['MRP'] = power * 1.3
         v['Powerplant']['MCP'] = power 
         v['Powerplant']['SFC'] = sfc * (1-v['Powerplant']['SFCTechImprovementFactor'])
-    
-    def SFC(self, power):
-        """Returns SFC at a given output power."""
-        v = self.vconfig
-        # TODO:  Insert partial-power SFC
-        #return v['Powerplant']['SFC']
-        return -0.00001495*power + .4904 # right now this is the GE CT7-8 engine, in the S-92.  Put it back to a generic scaling using v['Powerplant']['SFC'] !
     
     def flyMission(self):
         m = self.mconfig
