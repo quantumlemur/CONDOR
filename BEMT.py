@@ -296,8 +296,8 @@ class Rotor:
         self.theta_1s = theta_1s
         self.beta_0 = beta_0
 
-        if abs(Fz-L)/Fz<tol and abs(lastP-P)/lastP<tol:
-            P_total = Pinduced + Pprofile + Fx*V/550
+        if abs(Fz-L)/Fz<tol and abs(lastP-P)/lastP<tol and abs(theta_0)<math.pi/4:
+            P_total = Pinduced + Pprofile
         else:
             if debug: print('%s < %s       %s < %s' % (abs(Fz-L)/Fz, tol, tol, tol))
             P_total = np.nan
@@ -412,7 +412,7 @@ if __name__ == '__main__':
         print V
         Fhorizontal = 1./2 * rho * V**2 * f
         Fvertical = 26000. # pounds
-        P_tot[i] = rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=v['Simulation']['MaxSteps'])
+        P_tot[i] = rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=v['Simulation']['MaxSteps']) + Fhorizontal*V/550
     import matplotlib.pyplot as plt
     plt.figure()
     plt.plot(speeds/1.687, P_tot)

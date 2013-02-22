@@ -1,4 +1,6 @@
 import math
+from configobj import ConfigObj
+from validate import Validator
 from BEMT import Blade, Rotor
 
 debug = False
@@ -12,8 +14,8 @@ def pvar(locals_, vars_):
 class Vehicle:
     
     def __init__(self, vconfig, mconfig, GW):
-        self.vconfig = vconfig
-        self.mconfig = mconfig
+        self.vconfig = ConfigObj(vconfig)
+        self.mconfig = ConfigObj(mconfig)
         self.GW = GW
         self.setup()
 
@@ -254,8 +256,6 @@ class Vehicle:
         MR = v['Main Rotor'] # shorthand
         # step through all the segments specified in the mission file
         for i in range(0, m['NumSegments']):
-            if not v['Sizing Results']['CouldTrim']:
-                break
             seg = 'Segment %d' % (i+1)
             # Copy the segment data into the Condition section
             def makeCurrent(section, key, vconfig):
@@ -274,7 +274,7 @@ class Vehicle:
                 power = self.powerReq()
                 if math.isnan(power):
                     v['Sizing Results']['CouldTrim'] = False
-                    break
+                    return
                 fuel = self.SFC(power) * power * (duration/60)
                 w -= fuel
                 totalFuel += fuel
@@ -307,7 +307,8 @@ class Vehicle:
 
         # proportion out forward thrust between the aux prop and the rotors
         BodyDrag = .5 * Density * V**2 * v['Body']['FlatPlateDrag']
-        ForwardThrust = BodyDrag + WingDrag
+        TotalDrag = BodyDrag + WingDrag
+        ForwardThrust = TotalDrag
         if v['Aux Propulsion']['NumAuxProps'] > 0:
             ForwardThrust_auxprops = ForwardThrust * v['Aux Propulsion']['PropulsionFactor']
             ForwardThrust_perAuxprop = ForwardThrust_auxprops / v['Aux Propulsion']['NumAuxProps']
@@ -319,6 +320,7 @@ class Vehicle:
 
         # calculate rotor power
         singleRotorPower = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perRotor, Fz=VerticalLift_perRotor, maxSteps=v['Simulation']['MaxSteps'])
+        singleRotorPower = singleRotorPower / (1-v['Body']['DownwashFactor'])
         if math.isnan(singleRotorPower):
             v['Trim Failure']['V'] = V / 1.687
             v['Trim Failure']['rho'] = Density
@@ -331,7 +333,7 @@ class Vehicle:
         singlePropPower = ForwardThrust_perAuxprop * V * v['Aux Propulsion']['PropEfficiency'] / 550
 
         # find total power
-        totalPower = singleRotorPower*v['Main Rotor']['NumRotors'] + singlePropPower*v['Aux Propulsion']['NumAuxProps']
+        totalPower = singleRotorPower*v['Main Rotor']['NumRotors'] + singlePropPower*v['Aux Propulsion']['NumAuxProps'] + TotalDrag*V/550 # Is this right?  should the parasite power be just added on directly like this?
         totalPower = totalPower / (1-v['Antitorque']['AntitorquePowerFactor']) / (1-v['Powerplant']['TransmissionEfficiency'])
         if debug: pvar(locals(), ('singleRotorPower', 'totalPower'))
         return totalPower
@@ -367,11 +369,11 @@ if __name__ == '__main__':
     vehicle.write()
 
     plt.figure()
-    plt.plot(v['Power Curve']['Speeds'], v['Power Curve']['PowersSL'])
-    plt.plot(v['Power Curve']['Speeds'], v['Power Curve']['PowersCruise'])
+    plt.plot(vehicle.vconfig['Power Curve']['Speeds'], vehicle.vconfig['Power Curve']['PowersSL'])
+    plt.plot(vehicle.vconfig['Power Curve']['Speeds'], vehicle.vconfig['Power Curve']['PowersCruise'])
     MCPspeeds = [0, 200]
     MCPSL = [vehicle.powerAvailable(0), vehicle.powerAvailable(0)]
-    MCPalt = [vehicle.powerAvailable(v['Condition']['CruiseAltitude']), vehicle.powerAvailable(v['Condition']['CruiseAltitude'])]
+    MCPalt = [vehicle.powerAvailable(vehicle.vconfig['Condition']['CruiseAltitude']), vehicle.powerAvailable(vehicle.vconfig['Condition']['CruiseAltitude'])]
     plt.plot(MCPspeeds, MCPSL, 'b')
     plt.plot(MCPspeeds, MCPalt, 'g')
     plt.legend(('Sea Level', 'Cruise'))
