@@ -257,6 +257,10 @@ class Vehicle:
             if not v['Sizing Results']['CouldTrim']:
                 break
             seg = 'Segment %d' % (i+1)
+            # Copy the segment data into the Condition section
+            def makeCurrent(section, key, vconfig):
+                vconfig['Condition'][key] = section[key]
+            m[seg].walk(makeCurrent, vconfig=v)
             w += m[seg]['DeltaLoad'] # add or subtract and weight changes specified in the mission
             if debug: print 'Starting at %s    adding load: %d     weight: %d' % (seg, m[seg]['DeltaLoad'], w)
             while elapsed < m[seg]['EndTime']: # keep stepping through until we finish a segment
@@ -355,7 +359,7 @@ if __name__ == '__main__':
     mvdt = Validator()
     m.validate(mvdt)
     vehicle = Vehicle(v, m, 26000.)
-    #vehicle.flyMission()
+    vehicle.flyMission()
     vehicle.generatePowerCurve()
     vehicle.findHoverCeiling()
     vehicle.findMaxRange()

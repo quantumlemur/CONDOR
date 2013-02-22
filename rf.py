@@ -5,7 +5,7 @@ from vehicle import Vehicle
 
 
 debug = False
-writeOutput = False
+writeOutput = True
 
 def pvar(locals_, vars_):
     s = ['%s: %d' % (var, locals_[var]) for var in vars_]
@@ -59,11 +59,12 @@ class SizedVehicle:
         #choppah.findHoverCeiling()
         v['Simulation']['StopReason'] = stopReason
         v['Simulation']['GoodRun'] = goodRun
-        v['Sizing Results']['SizedGrossWeight'] = GW
         if goodRun:
             v['Sizing Results']['Optimized'] = True
+            v['Sizing Results']['SizedGrossWeight'] = GW
         else:
             v['Sizing Results']['Optimized'] = False
+            v['Sizing Results']['SizedGrossWeight'] = float('nan')
         if debug: print('Optimized: %s     %s' % (goodRun, stopReason))
         if writeOutput: choppah.write()
 
