@@ -162,7 +162,7 @@ def GenerateBaselineData():
     GW = scipy.ndimage.zoom(GW, 3)
     #MCP = scipy.ndimage.zoom(MCP, 3)
     
-    GWN = np.arange((int)(GW.min())/tickresolution*tickresolution-GWticklowpadding, (int)(GW.max())/tickresolution*tickresolution+GWtickspacing+GWtickhighpadding, GWtickspacing)
+    GWN = np.arange((int)(GW[np.isfinite(GW)].min())/tickresolution*tickresolution-GWticklowpadding, (int)(GW[np.isfinite(GW)].max())/tickresolution*tickresolution+GWtickspacing+GWtickhighpadding, GWtickspacing)
     
     # find baseline datapoint
     m = ConfigObj(mconfig)
@@ -544,8 +544,8 @@ def SolidityContour(vconfig, mconfig, num, baseline):
                 MRP[DLi][i][j] = v['Powerplant']['MCP']
     print('')
     plt.figure(num=None, figsize=(figW, figH), dpi=figDPI, facecolor='w', edgecolor='k')
-    GWN = np.arange((int)(GW.min()/1000)*1000, (int)((GW.max()/1000)+1)*1000, 2000)
-    MRPN = np.arange((int)(MRP.min()/250)*250, (int)((MRP.max()/250)+1)*250, 250)
+    GWN = np.arange((int)(GW[np.isfinite(GW)].min()/1000)*1000, (int)((GW[np.isfinite(GW)].max()/1000)+1)*1000, 2000)
+    MRPN = np.arange((int)(MRP[np.isfinite(MRP)].min()/250)*250, (int)((MRP[np.isfinite(MRP)].max()/250)+1)*250, 250)
     for DLi in xrange(len(Spread)):
         plot = plt.subplot(2, 2, DLi+1)
         plot.tick_params(labelsize=axislabelfontsize)
