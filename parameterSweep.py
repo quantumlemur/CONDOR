@@ -58,22 +58,22 @@ GWtickhighpadding = 4000
 MRPtickspacing = 250
 tickresolution = 1000
 
-displayPlots = False
+displayPlots = True
 saveData = True
 saveFigures = False
 annotatePlots = True
 
-generateNewBaseline = False
+generateNewBaseline = True
 
 plotScalingPlots = False
 plotPerformanceCurve = False
 
-plotRangeSpeedContour = False
+plotRangeSpeedContour = True
 plotWeightImprovements = False
 plotDragImprovements = False
 plotSFCImprovements = False
 plotAllImprovements = False
-plotSweepContours = ['DiskLoading']#['Solidity', 'DiskLoading', 'TipSpeed'] # 'SpanRadiusRatio'
+plotSweepContours = [] #['DiskLoading']#['Solidity', 'DiskLoading', 'TipSpeed'] # 'SpanRadiusRatio'
 plotExtraContours = True
 
 
@@ -400,10 +400,11 @@ def PerformanceCurve():
     m = ConfigObj(mconfig)
     choppah = Vehicle(v, m, 25000)
     choppah.generatePowerCurve()
+    choppah.write()
     
     plt.figure(num=None, figsize=(figW/1.5, figH/1.5), dpi=figDPI, facecolor='w', edgecolor='k')
-    plt.plot(choppah.speeds, choppah.powersSL)
-    plt.plot(choppah.speeds, choppah.powersCruise)
+    plt.plot(choppah.vconfig['Power Curve']['Speeds'], choppah.vconfig['Power Curve']['PowersSL'])
+    plt.plot(choppah.vconfig['Power Curve']['Speeds'], choppah.vconfig['Power Curve']['PowersCruise'])
     MCPspeeds = [0, 200]
     MCPSL = [2043*2, 2043*2]
     MCPalt = [3104, 3104]
@@ -669,9 +670,9 @@ if __name__ == '__main__':
     #blah = SizedVehicle(v, m)
     if generateNewBaseline:
         baseline = GenerateBaselineData()
-        np.save('Config/baseline.npy', baseline)
+        np.save('Output/baseline.npy', baseline)
     else:
-        baseline = np.load('Config/baseline.npy')
+        baseline = np.load('Output/baseline.npy')
     if plotScalingPlots: ScalingPlots()
     if plotPerformanceCurve: PerformanceCurve()
     if plotRangeSpeedContour: RangeSpeedContour(baseline)

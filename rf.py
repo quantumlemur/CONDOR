@@ -4,8 +4,8 @@ import ConfigParser
 from vehicle import Vehicle
 
 
-debug = True
-writeOutput = True
+debug = False
+writeOutput = False
 
 def pvar(locals_, vars_):
     s = ['%s: %d' % (var, locals_[var]) for var in vars_]
@@ -17,6 +17,7 @@ class SizedVehicle:
     def __init__(self, vconfig, mconfig):
         self.vconfig = vconfig
         self.mconfig = mconfig
+        self.vconfig['Sizing Results']['SizedGrossWeight'] = float('nan')
 
     
     def sizeMission(self):

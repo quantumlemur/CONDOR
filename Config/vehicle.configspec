@@ -45,9 +45,13 @@ PropulsionFactor = float()
 BaselineMRP = float()
 BaselineSFC = float()
 SFCTechImprovementFactor = float()
+TransmissionEfficiency = float()
 
 [Body]
 DragTechImprovementFactor = float()
+
+[Antitorque]
+AntitorquePowerFactor = float()
 
 [Simulation]
 TimeStep = float()
@@ -58,3 +62,8 @@ GWmax = float()
 GWTolerance = float()
 TrimAccuracyPercentage = float()
 numBladeElementSegments = integer()
+PowerCurveResolution = float()
+HoverCeilingResolution = float()
+
+[Condition]
+CruiseAltitude = float()
