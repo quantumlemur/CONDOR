@@ -25,7 +25,7 @@ TipSpeedrange = [400, 800]
 GWrange = [15000, 45000]
 
 
-numPerParam = 4
+numPerParam = 10
 sweeplimits = [[100, 200], [300, 1000]] # speed, range
 baselineRange = 544.
 baselineSpeed = 153.
@@ -63,17 +63,17 @@ saveData = True
 saveFigures = True
 annotatePlots = True
 
-generateNewBaseline = True
+generateNewBaseline = False
 
 plotScalingPlots = False
 plotPerformanceCurve = False
 
-plotRangeSpeedContour = True
+plotRangeSpeedContour = False
 plotWeightImprovements = False
 plotDragImprovements = False
 plotSFCImprovements = False
 plotAllImprovements = False
-plotSweepContours = [] #['DiskLoading']#['Solidity', 'DiskLoading', 'TipSpeed'] # 'SpanRadiusRatio'
+plotSweepContours = ['TipSpeed'] #['DiskLoading']#['Solidity', 'DiskLoading', 'TipSpeed'] # 'SpanRadiusRatio'
 plotExtraContours = True
 
 
@@ -307,6 +307,11 @@ def SweepContours(baseline):
             extraContour = 'Nothing'
             section = 'Wing'
             title = '%.1f Ratio of Wing Span to Rotor Radius'
+        elif sweepVar == 'Radius':
+            Spread = [25., 30., 35., 40.]
+            extraContour = 'Nothing'
+            section = 'Main Rotor'
+            title = '%d m Radius'
         
         sweepvars = ['Speed', 'Range']
         # pick the spreads of the variables we're going to sweep
@@ -339,10 +344,11 @@ def SweepContours(baseline):
                     v['Wing']['MaxSpeed'] = (float) (SPEED[i][j])
                     v[section][sweepVar] = Spread[DLi]
                     vehicle = SizedVehicle(v, m)
-                    vehicle.sizeMission()
-                    GW[DLi][i][j] = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
-                    MCP[DLi][i][j] = vehicle.vconfig['Powerplant']['MCP']
-                    extraContours[DLi][i][j] = vehicle.vconfig['Sizing Results'][extraContour]
+                    newvehicle = vehicle.sizeMission()
+                    newvehicle.findHoverCeiling()
+                    GW[DLi][i][j] = newvehicle.vconfig['Sizing Results']['SizedGrossWeight']
+                    MCP[DLi][i][j] = newvehicle.vconfig['Powerplant']['MCP']
+                    extraContours[DLi][i][j] = newvehicle.vconfig['Performance'][extraContour]
             # smoothedGW[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
             # smoothedMCP[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
         print('')
@@ -351,7 +357,7 @@ def SweepContours(baseline):
         # RANGE = scipy.ndimage.zoom(RANGE, 3)
         # MCP = smoothedMCP
         # GW = smoothedGW
-        extraContours = scipy.ndimage.zoom(extraContours, 3)
+        # extraContours = scipy.ndimage.zoom(extraContours, 3)
 
         GWN = baseline[3]
         plt.figure(num=None, figsize=(figW, figH), dpi=figDPI, facecolor='w', edgecolor='k')

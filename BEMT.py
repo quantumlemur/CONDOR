@@ -154,15 +154,16 @@ class Rotor:
         self.theta_1c = 0.
         self.theta_1s = 0.
 
-    def calcInflow(self, Fx, Fz, rho, V):
+    def calcInflow(self, Fx, Fz, rho, V, maxSteps):
         # inflow calculations
         alpha_TPP = math.tan(Fx/Fz)
         thrust = math.sqrt(Fx**2 + Fz**2)
         diskArea = math.pi * self.R**2
         inflow = math.sqrt(thrust / (2.*rho*diskArea))
         change = 999.
+        steps = 0
         # I believe these inflow equations are only valid for small alpha_TPP, so are not valid for propellers
-        while change>.01:
+        while change>.01 and steps<maxSteps:
             # Tip loss modelby Prandlt (documented in Leishman)
             f = self.numblades/2. * (1-self.r/self.R)/(inflow/self.Vtip)
             F = 2./math.pi * np.arccos(np.exp(-f))
@@ -170,6 +171,7 @@ class Rotor:
             newinflow = thrust / (2.*rho*diskArea*np.sqrt((V*math.cos(alpha_TPP))**2 + (V*math.sin(alpha_TPP) + F*inflow)**2))
             change = abs(np.sum(newinflow) - np.sum(inflow)) / np.sum(inflow)
             inflow = newinflow
+            steps += 1
         uniform = (inflow * self.r) / self.r
         inflow = inflow * (1. + (4./3.*V/inflow)/(1.2+V/inflow)*self.r/self.R*self.cospsi) # Glauert non-uniform inflow correction
         # import matplotlib.pyplot as plt
@@ -222,7 +224,7 @@ class Rotor:
         # First we'll check if the pre-existing trim solution is reasonable. If not, re-initialize them.
         if (self.beta_0<0) or (self.beta_0>math.pi/4) or (abs(self.theta_1c)>math.pi/4) or (abs(self.theta_1s)>math.pi/4) or math.isnan(self.power):
             self.reinitializeTrimVars()
-        inflow = self.calcInflow(Fx=Fx, Fz=Fz, rho=rho, V=V)
+        inflow = self.calcInflow(Fx=Fx, Fz=Fz, rho=rho, V=V, maxSteps=maxSteps)
         beta_0 = self.beta_0
         theta_0 = self.theta_0
         theta_1c = self.theta_1c

@@ -4,7 +4,7 @@ from configobj import ConfigObj
 
 
 debug = False
-writeOutput = False
+writeOutput = True
 
 def pvar(locals_, vars_):
     s = ['%s: %d' % (var, locals_[var]) for var in vars_]
@@ -89,7 +89,7 @@ if __name__ == '__main__':
     mvdt = Validator()
     m.validate(mvdt)
     blah = SizedVehicle(v, m)
-    blah.sizeMission()
+    veh = blah.sizeMission()
     stopTime = clock()
     elapsed = stopTime - startTime
     if debug: print('Elapsed time: %f' % elapsed)

@@ -24,7 +24,7 @@ class Vehicle:
         m = self.mconfig
         GW = self.GW
         self.misSize = float('nan')
-        v['Body']['FlatPlateDrag'] = 0.27 * GW**.5 * (1-v['Body']['DragTechImprovementFactor']) #0.015 * GW**0.67 # flat plate drag area
+        v['Body']['FlatPlateDrag'] = 0.25 * GW**.5 * (1-v['Body']['DragTechImprovementFactor']) #0.015 * GW**0.67 # flat plate drag area
         v['Main Rotor']['Omega'] = v['Main Rotor']['TipSpeed'] / v['Main Rotor']['Radius']
         v['Main Rotor']['DiskArea'] = math.pi * v['Main Rotor']['Radius']**2 * v['Main Rotor']['NumRotors']
         v['Main Rotor']['DiskLoading'] = GW / v['Main Rotor']['NumRotors'] / v['Main Rotor']['DiskArea']
@@ -35,6 +35,7 @@ class Vehicle:
         v['Sizing Results']['GrossWeight'] = GW
         v['Sizing Results']['CouldTrim'] = True
         v['Sizing Results']['MisSize'] = float('nan')
+        v['Sizing Results']['Nothing'] = 0.
         
         self.blade = Blade(c81File='Config/%s'%v['Main Rotor']['AirfoilFile'], skip_header=0, skip_footer=0, rootChord=v['Main Rotor']['RootChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout']/v['Main Rotor']['Radius'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
         self.rotor = Rotor(self.blade, psiSegments=v['Simulation']['numBladeElementSegments'], Vtip=v['Main Rotor']['TipSpeed'], radius=v['Main Rotor']['Radius'], numblades=v['Main Rotor']['NumBlades'])
@@ -214,29 +215,29 @@ class Vehicle:
                 maxSpeedPower = powers[i]
         v['Performance']['MaxSpeed'] = maxSpeed
         v['Performance']['PowerAtMaxSpeed'] = maxSpeedPower
-        
+
     def scaleEngine(self):
         """Scales the engine for high hot hover and fast cruise."""
         v = self.vconfig
+        altitude = 6000.
         v['Condition']['Weight'] = self.GW
-        v['Condition']['Density'] = self.density(6000) # 0.001852 # 6k 95f
+        v['Condition']['Density'] = self.density(altitude)
         v['Condition']['Speed'] = 0 # hover
         hoverpower = self.powerReq()
         if math.isnan(hoverpower):
             v['Sizing Results']['CouldTrim'] = False
-        altitude = 6000.
-        temp = 62.6
-        hoverpower = hoverpower / ((1-0.195*(altitude/10000))*(1-0.005*(temp-59))) # scale engine to sea level
+        hoverpower = hoverpower * self.density(0) / self.density(altitude) # scale engine to sea level
+        v['Engine Scaling']['HoverPower'] = hoverpower
         
         v['Condition']['Weight'] = self.GW
-        v['Condition']['Density'] = self.density(13000) #0.001207 # 20k 95f
+        altitude = 13000.
+        v['Condition']['Density'] = self.density(altitude) #0.001207 # 20k 95f
         v['Condition']['Speed'] = v['Wing']['MaxSpeed'] # Max speed
         cruisepower = self.powerReq()
         if math.isnan(cruisepower):
             v['Sizing Results']['CouldTrim'] = False
-        altitude = 20000.
-        temp = 15.8
-        cruisepower = cruisepower / ((1-0.195*(altitude/10000))*(1-0.005*(temp-59))) # scale engine to sea level
+        cruisepower = cruisepower * self.density(0) / self.density(altitude) # scale engine to sea level
+        v['Engine Scaling']['CruisePower'] = cruisepower
         
         power = max(hoverpower, cruisepower)
         gamma = power / self.vconfig['Powerplant']['BaselineMRP']
@@ -377,7 +378,7 @@ if __name__ == '__main__':
     plt.plot(MCPspeeds, MCPSL, 'b')
     plt.plot(MCPspeeds, MCPalt, 'g')
     plt.legend(('Sea Level', 'Cruise'))
-    plt.axis([0, 200, 0, 5000])
+    plt.axis([0, 200, 0, 7000])
     plt.xlabel('Speed (kts)')
     plt.ylabel('Power (hp)')
     plt.show()
