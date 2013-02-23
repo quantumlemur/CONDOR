@@ -1,7 +1,6 @@
 import csv
 import sys
 import time
-import Queue
 import random
 import numpy as np
 import multiprocessing
@@ -10,7 +9,7 @@ from rf import SizedVehicle
 from configobj import ConfigObj
 from validate import Validator
 
-poolSize = 1000 #000  # on my computer, I run about 25 cases/minute, or 1500/hour
+runTime = 60 # run time in seconds  # on my computer, I run about 25 cases/minute, or 1500/hour
 
 inputs = (('Wing', 'SpanRadiusRatio'), ('Wing', 'WingAspectRatio'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'TaperRatio'), ('Main Rotor', 'TipTwist'), ('Main Rotor', 'Radius'), ('Main Rotor', 'TipSpeed'), ('Main Rotor', 'RootChord'), ('Main Rotor', 'NumBlades'))
 inputRanges = ((0., 4.), (3., 9.), (0, 2), (.6, 1.), (-16, -4), (15., 35.), (400., 800.), (.5, 3.), (2, 6))
@@ -63,17 +62,15 @@ class Task(object):
         else:
             return None
 
-def showProgress(name, startTime, currentTime, currentRow, totalRows):
+def showProgress(name, startTime, currentTime, endTime):
     elapsedTime = currentTime - startTime
-    timePerRow = elapsedTime / currentRow
-    remainingRows = totalRows - currentRow
-    remainingTime = remainingRows * timePerRow
-    totalTime = totalRows * timePerRow
+    remainingTime = endTime - currentTime
+    totalTime = endTime - startTime
     percentage = elapsedTime / totalTime
     barlen = 80
     barfill = (int) (round(barlen * percentage))
     bar = ''.rjust(barfill,'\xFE').ljust(barlen, '.')
-    s = '     %-40s     %3d of %3d      %s of %s     %s remaining %90s' % (name, currentRow, totalRows, fmtTime(elapsedTime), fmtTime(totalTime), fmtTime(remainingTime), bar)
+    s = '     %-40s     %s of %s     %s remaining %90s' % (name, fmtTime(elapsedTime), fmtTime(totalTime), fmtTime(remainingTime), bar)
     sys.stdout.write(s)
     sys.stdout.flush()
     sys.stdout.write("\b" * len(s))
@@ -98,48 +95,40 @@ if __name__ == '__main__':
     workers = [Worker(tasks, results) for i in xrange(numworkers)]
     for w in workers:
         w.start()
-    # load up the queue with jobs
-    for i in xrange(poolSize):
-        tasks.put(Task(v, m))
-
-    print 'All tasks queued!'
 
     # put the endcaps on the queue to shut the workers down
+    # get the results
+    startTime = time.time()
+    endTime = startTime + runTime
+    # keep looping until we actually get our first real result
+    gotKeys = False
+    goodRows = 0
+    outstandingTasks = 1
+    tasks.put(Task(v, m))
+    with open('Output/designSpace.csv', 'wb') as f:
+        while outstandingTasks > 0:
+            showProgress('%d good results, %d outstanding tasks' % (goodRows, outstandingTasks), startTime, time.time(), endTime)
+            if outstandingTasks<multiprocessing.cpu_count()*4 and time.time()<endTime:
+                for i in xrange(multiprocessing.cpu_count()*2):
+                    tasks.put(Task(v, m))
+                    outstandingTasks += 1
+            flatdict = results.get()
+            outstandingTasks -= 1
+            if flatdict is not None:
+                goodRows += 1
+                if gotKeys:
+                    writer.writerow(flatdict)
+                else:
+                    keys = flatdict.keys()
+                    writer = csv.DictWriter(f, keys, delimiter=',')
+                    writer.writerow({key:key for key in keys})
+                    writer.writerow(flatdict)
+                    gotKeys = True
     for i in xrange(numworkers):
         tasks.put(None)
-    # get the results
-    startTime = time.clock()
-    output = {}
-    goodResults = 0
-    for i in xrange(poolSize):
-        if i>0: showProgress('design space', startTime, time.clock(), i, poolSize)
-        flatdict = results.get()
-        if flatdict is not None:
-            missingOutput = output.keys()
-            for key, value in flatdict.iteritems():
-                if key in output:
-                    output[key].append(value)
-                    missingOutput.remove(key)
-                else:
-                    newvals = [0] * goodResults
-                    newvals.append(value)
-                    output[key] = newvals
-            for missing in missingOutput:
-                output[missing].append(float('nan'))
-            goodResults += 1
     # join/close the tasks queue
     tasks.join()
 
-    print 'Writing out the data!'
-    # write out the data
-    keys = output.keys()
-    with open('Output/designSpace.csv', 'wb') as f:
-        writer = csv.writer(f, delimiter=',')
-        writer.writerow(keys)
-        for i in xrange(len(output[keys[0]])):
-            writer.writerow([output[key][i] for key in keys])
-
-
-
-
-
+    # print 'Writing out the data!'
+    #     for i in xrange(len(output[keys[0]])):
+    #         writer.writerow([output[key][i] for key in keys])

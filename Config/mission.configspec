@@ -1,5 +1,3 @@
-TotalTime = float()
-
 [__many__]
 Distance = float()
 Speed = float()
