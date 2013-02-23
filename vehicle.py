@@ -225,7 +225,7 @@ class Vehicle:
         v['Condition']['Speed'] = 0 # hover
         hoverpower = self.powerReq()
         if math.isnan(hoverpower):
-            v['Sizing Results']['CouldTrim'] = False
+            self.recordTrimFailure()
         hoverpower = hoverpower * self.density(0) / self.density(altitude) # scale engine to sea level
         v['Engine Scaling']['HoverPower'] = hoverpower
         
@@ -235,7 +235,7 @@ class Vehicle:
         v['Condition']['Speed'] = v['Wing']['MaxSpeed'] # Max speed
         cruisepower = self.powerReq()
         if math.isnan(cruisepower):
-            v['Sizing Results']['CouldTrim'] = False
+            self.recordTrimFailure()
         cruisepower = cruisepower * self.density(0) / self.density(altitude) # scale engine to sea level
         v['Engine Scaling']['CruisePower'] = cruisepower
         
@@ -274,7 +274,7 @@ class Vehicle:
                 v['Condition']['Weight'] = w
                 power = self.powerReq()
                 if math.isnan(power):
-                    v['Sizing Results']['CouldTrim'] = False
+                    self.recordTrimFailure()
                     return
                 fuel = self.SFC(power) * power * (duration/60)
                 w -= fuel
@@ -285,7 +285,13 @@ class Vehicle:
         if debug: print 'Finished!  Total fuel used: %s     Missize amount: %s' % (totalFuel, self.misSize)
         v['Sizing Results']['MisSize'] = self.misSize
 
-    
+    def recordTrimFailure(self):
+        v = self.vconfig
+        v['Sizing Results']['CouldTrim'] = False
+        def recordFailure(section, key, vconfig):
+            vconfig['Trim Failure'][key] = section[key]
+        v['Condition'].walk(recordFailure, vconfig=v)
+
     def powerReq(self):
         v = self.vconfig
         Density = v['Condition']['Density']
@@ -322,13 +328,6 @@ class Vehicle:
         # calculate rotor power
         singleRotorPower = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perRotor, Fz=VerticalLift_perRotor, maxSteps=v['Simulation']['MaxSteps'])
         singleRotorPower = singleRotorPower / (1-v['Body']['DownwashFactor'])
-        if math.isnan(singleRotorPower):
-            v['Trim Failure']['V'] = V / 1.687
-            v['Trim Failure']['rho'] = Density
-            v['Trim Failure']['speedOfSound'] = self.speedOfSound(Density)
-            v['Trim Failure']['Fx'] = ForwardThrust_perRotor
-            v['Trim Failure']['Fz'] = VerticalLift_perRotor
-            v['Trim Failure']['MaxSteps'] = v['Simulation']['MaxSteps']
 
         # calculate prop power
         singlePropPower = ForwardThrust_perAuxprop * V * v['Aux Propulsion']['PropEfficiency'] / 550
@@ -336,6 +335,12 @@ class Vehicle:
         # find total power
         totalPower = singleRotorPower*v['Main Rotor']['NumRotors'] + singlePropPower*v['Aux Propulsion']['NumAuxProps'] + TotalDrag*V/550 # Is this right?  should the parasite power be just added on directly like this?
         totalPower = totalPower / (1-v['Antitorque']['AntitorquePowerFactor']) / (1-v['Powerplant']['TransmissionEfficiency'])
+
+        # record a few values
+        v['Condition']['SpeedOfSound'] = self.speedOfSound(Density)
+        v['Condition']['Fx'] = ForwardThrust_perRotor
+        v['Condition']['Fz'] = VerticalLift_perRotor
+
         if debug: pvar(locals(), ('singleRotorPower', 'totalPower'))
         return totalPower
         
