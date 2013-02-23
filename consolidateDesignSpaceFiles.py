@@ -1,5 +1,6 @@
 import os
 import csv
+from shutil import copy
 
 
 folder = 'Output/ConsolidatedDesignSpaceFiles/'
@@ -7,8 +8,17 @@ folder = 'Output/ConsolidatedDesignSpaceFiles/'
 outputFileName = folder + 'ConsolidatedDesignSpace_temp.csv'
 finalOutputFileName = folder + 'designSpace_ALL.csv'
 
+
 keys = []
 if os.path.isfile(finalOutputFileName):
+    # make backup of complete design space file
+    fnum = 0
+    fileNameTemplate = 'Output/ConsolidatedDesignSpaceFiles/BACKUPdesignSpace_%d.csv'
+    fileName = fileNameTemplate % (fnum)
+    while os.path.isfile(fileName):
+        fnum += 1
+        fileName = fileNameTemplate % (fnum)
+    copy(finalOutputFileName, fileName)
     with open(finalOutputFileName, 'rb') as f:
         reader = csv.DictReader(f)
         keys = sorted(reader.fieldnames)
