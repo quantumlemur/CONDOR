@@ -10,7 +10,7 @@ from rf import SizedVehicle
 from configobj import ConfigObj
 from validate import Validator
 
-runTime = 1*60 # run time # on my computer, I run about 25 cases/minute, or 1500/hour
+runTime = 10*60 # run time # on my computer, I run about 25 cases/minute, or 1500/hour
 
 inputs = (('Wing', 'SpanRadiusRatio'), ('Wing', 'WingAspectRatio'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'TaperRatio'), ('Main Rotor', 'TipTwist'), ('Main Rotor', 'Radius'), ('Main Rotor', 'TipSpeed'), ('Main Rotor', 'RootChord'), ('Main Rotor', 'NumBlades'))
 inputRanges = ((0., 4.), (3., 9.), (0, 1), (.6, 1.), (-16, -4), (15., 35.), (400., 800.), (.5, 3.), (2, 6))
@@ -99,7 +99,7 @@ if __name__ == '__main__':
 
     # find our output file name
     fnum = 0
-    while not os.path.isfile('Output/designSpace_%d.csv' % fnum):
+    while os.path.isfile('Output/designSpace_%d.csv' % fnum):
         fnum += 1
     fileName = 'Output/designSpace_%d.csv' % fnum
     startTime = time.time()
@@ -109,7 +109,7 @@ if __name__ == '__main__':
     goodRows = 0
     outstandingTasks = 1
     tasks.put(Task(v, m))
-    with open(filename, 'wb') as f:
+    with open(fileName, 'wb') as f:
         while outstandingTasks > 0:
             showProgress('%d good results, %d outstanding tasks' % (goodRows, outstandingTasks), startTime, time.time(), endTime)
             if outstandingTasks<multiprocessing.cpu_count()*2 and time.time()<endTime:
