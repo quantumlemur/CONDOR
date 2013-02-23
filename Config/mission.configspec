@@ -2,7 +2,6 @@
 Distance = float()
 Speed = float()
 Altitude = float()
-Density = float()
 DeltaTemp = float()
 CrewWeight = float()
 PayloadWeight = float()

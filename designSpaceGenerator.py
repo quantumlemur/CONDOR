@@ -1,3 +1,4 @@
+import os
 import csv
 import sys
 import time
@@ -9,10 +10,10 @@ from rf import SizedVehicle
 from configobj import ConfigObj
 from validate import Validator
 
-runTime = 60 # run time in seconds  # on my computer, I run about 25 cases/minute, or 1500/hour
+runTime = 1*60 # run time # on my computer, I run about 25 cases/minute, or 1500/hour
 
 inputs = (('Wing', 'SpanRadiusRatio'), ('Wing', 'WingAspectRatio'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'TaperRatio'), ('Main Rotor', 'TipTwist'), ('Main Rotor', 'Radius'), ('Main Rotor', 'TipSpeed'), ('Main Rotor', 'RootChord'), ('Main Rotor', 'NumBlades'))
-inputRanges = ((0., 4.), (3., 9.), (0, 2), (.6, 1.), (-16, -4), (15., 35.), (400., 800.), (.5, 3.), (2, 6))
+inputRanges = ((0., 4.), (3., 9.), (0, 1), (.6, 1.), (-16, -4), (15., 35.), (400., 800.), (.5, 3.), (2, 6))
 
 
 class Worker(multiprocessing.Process):
@@ -54,7 +55,7 @@ class Task(object):
         v = sizedVehicle.vconfig
         flatdict = {}
         def flatten(section, key):
-            if key not in ['Speeds', 'PowersCruise', 'PowersSL']:
+            if section.name in ['Sizing Results']:#not in ['Power Curve', 'Condition', 'Trim Failure']:
                 flatdict[key] = section[key]
         v.walk(flatten)
         if flatdict['GoodRun']:
@@ -96,8 +97,11 @@ if __name__ == '__main__':
     for w in workers:
         w.start()
 
-    # put the endcaps on the queue to shut the workers down
-    # get the results
+    # find our output file name
+    fnum = 0
+    while not os.path.isfile('Output/designSpace_%d.csv' % fnum):
+        fnum += 1
+    fileName = 'Output/designSpace_%d.csv' % fnum
     startTime = time.time()
     endTime = startTime + runTime
     # keep looping until we actually get our first real result
@@ -105,11 +109,11 @@ if __name__ == '__main__':
     goodRows = 0
     outstandingTasks = 1
     tasks.put(Task(v, m))
-    with open('Output/designSpace.csv', 'wb') as f:
+    with open(filename, 'wb') as f:
         while outstandingTasks > 0:
             showProgress('%d good results, %d outstanding tasks' % (goodRows, outstandingTasks), startTime, time.time(), endTime)
-            if outstandingTasks<multiprocessing.cpu_count()*4 and time.time()<endTime:
-                for i in xrange(multiprocessing.cpu_count()*2):
+            if outstandingTasks<multiprocessing.cpu_count()*2 and time.time()<endTime:
+                for i in xrange(multiprocessing.cpu_count()):
                     tasks.put(Task(v, m))
                     outstandingTasks += 1
             flatdict = results.get()
