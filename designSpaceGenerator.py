@@ -55,7 +55,7 @@ class Task(object):
         v = sizedVehicle.vconfig
         flatdict = {}
         def flatten(section, key):
-            if section.name in ['Sizing Results']:#not in ['Power Curve', 'Condition', 'Trim Failure']:
+            if section.name not in ['Condition', 'Trim Failure']:
                 flatdict[key] = section[key]
         v.walk(flatten)
         if flatdict['GoodRun']:
