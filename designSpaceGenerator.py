@@ -10,7 +10,7 @@ from rf import SizedVehicle
 from configobj import ConfigObj
 from validate import Validator
 
-runTime = .4*60*60 # on my computer, I run about 25 cases/minute, or 1500/hour, and seem to get about 1 good case per minute out of it
+runTime = .95*60*60 # on my computer, I run about 25 cases/minute, or 1500/hour, and seem to get about 1 good case per minute out of it
 
 inputs = (('Main Rotor', 'NumRotors'), ('Wing', 'SpanRadiusRatio'), ('Wing', 'WingAspectRatio'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'TaperRatio'), ('Main Rotor', 'TipTwist'), ('Main Rotor', 'Radius'), ('Main Rotor', 'TipSpeed'), ('Main Rotor', 'RootChord'), ('Main Rotor', 'NumBlades'))
 inputRanges = ((1, 2), (0., 4.), (3., 9.), (0, 1), (.6, 1.), (-16, -4), (15., 35.), (400., 800.), (.5, 3.), (2, 6))
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     m.validate(mvdt)
     tasks = multiprocessing.JoinableQueue()
     results = multiprocessing.Queue()
-    numworkers = multiprocessing.cpu_count() * 2
+    numworkers = 3 if os.environ['COMPUTERNAME']=='LYNX' else multiprocessing.cpu_count()*2
     workers = [Worker(tasks, results) for i in xrange(numworkers)]
     for w in workers:
         w.start()
@@ -141,7 +141,7 @@ if __name__ == '__main__':
                     # update the runfile with current status
                     os.remove(runFile)
                     currentTime = time.time()
-                    runFile = 'running_%s   %d good     %.2f per hr     %d m remaining' % (os.environ['COMPUTERNAME'], goodRows, goodRows/(currentTime-startTime)*60*60, (endTime-startTime)/60
+                    runFile = 'running_%s   %d good     %.2f per hr     %d m remaining' % (os.environ['COMPUTERNAME'], goodRows, goodRows/(currentTime-startTime)*60*60, (endTime-startTime)/60)
                     with open(runFile, 'w') as f: f.write('blah')
     for i in xrange(numworkers):
         tasks.put(None)
