@@ -199,6 +199,10 @@ class Rotor:
         """Attempts to trim the rotor at given conditions.  Will re-use trim variables from last time if possible.
         Note that "drag" and "weight" in the variables are really just the veritcal and horizontal components of
         the force that the rotor is generating."""
+        # short circuit if we know we have too low of a solidity; this'll save a lot of computation time on bad runs
+        if self.solidity<0.05:
+            return float('nan')
+
         psi = self.psi
         r = self.r
         R = self.R

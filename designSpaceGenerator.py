@@ -10,10 +10,10 @@ from rf import SizedVehicle
 from configobj import ConfigObj
 from validate import Validator
 
-runTime = 15*60*60 # on my computer, I run about 25 cases/minute, or 1500/hour, and seem to get about 1 good case per minute out of it
+runTime = 1.5*60*60 # on my computer, I run about 25 cases/minute, or 1500/hour, and seem to get about 1 good case per minute out of it
 
-inputs = (('Wing', 'SpanRadiusRatio'), ('Wing', 'WingAspectRatio'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'TaperRatio'), ('Main Rotor', 'TipTwist'), ('Main Rotor', 'Radius'), ('Main Rotor', 'TipSpeed'), ('Main Rotor', 'RootChord'), ('Main Rotor', 'NumBlades'))
-inputRanges = ((0., 4.), (3., 9.), (0, 1), (.6, 1.), (-16, -4), (15., 35.), (400., 800.), (.5, 3.), (2, 6))
+inputs = (('Main Rotor', 'NumRotors'), ('Wing', 'SpanRadiusRatio'), ('Wing', 'WingAspectRatio'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'TaperRatio'), ('Main Rotor', 'TipTwist'), ('Main Rotor', 'Radius'), ('Main Rotor', 'TipSpeed'), ('Main Rotor', 'RootChord'), ('Main Rotor', 'NumBlades'))
+inputRanges = ((1, 2), (0., 4.), (3., 9.), (0, 1), (.6, 1.), (-16, -4), (15., 35.), (400., 800.), (.5, 3.), (2, 6))
 
 
 class Worker(multiprocessing.Process):
@@ -84,6 +84,10 @@ def fmtTime(total):
 
 if __name__ == '__main__':
     startTime = time.clock()
+    # write the "I am currently running" file
+    runFile = 'Output/running_%s' % os.environ['COMPUTERNAME']
+    with open(runFile, 'w') as f:
+        f.write('blah')
     v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
     m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
@@ -99,25 +103,29 @@ if __name__ == '__main__':
 
     # find our output file name
     fnum = 0
-    while os.path.isfile('Output/designSpace_%d.csv' % fnum):
+    fileNameTemplate = 'Output/designSpace_%s_%d.csv'
+    fileName = fileNameTemplate % (os.environ['COMPUTERNAME'], fnum)
+    while os.path.isfile(fileName):
         fnum += 1
-    fileName = 'Output/designSpace_%d.csv' % fnum
+        fileName = fileNameTemplate % (os.environ['COMPUTERNAME'], fnum)
     startTime = time.time()
     endTime = startTime + runTime
     # keep looping until we actually get our first real result
     gotKeys = False
     goodRows = 0
+    totalRows = 0
     outstandingTasks = 1
     tasks.put(Task(v, m))
     with open(fileName, 'wb') as f:
         while outstandingTasks > 0:
-            showProgress('%d good results, %d outstanding tasks' % (goodRows, outstandingTasks), startTime, time.time(), endTime)
+            showProgress('%d good, %d total, %d outstanding' % (goodRows, totalRows, outstandingTasks), startTime, time.time(), endTime)
             if outstandingTasks<multiprocessing.cpu_count()*2 and time.time()<endTime:
                 for i in xrange(multiprocessing.cpu_count()):
                     tasks.put(Task(v, m))
                     outstandingTasks += 1
             flatdict = results.get()
             outstandingTasks -= 1
+            totalRows += 1
             if flatdict is not None:
                 goodRows += 1
                 if gotKeys:
@@ -133,6 +141,9 @@ if __name__ == '__main__':
         tasks.put(None)
     # join/close the tasks queue
     tasks.join()
+    # remove the "I'm currently running" file
+    if os.path.isfile(runFile):
+        os.remove(runFile)
 
     # print 'Writing out the data!'
     #     for i in xrange(len(output[keys[0]])):

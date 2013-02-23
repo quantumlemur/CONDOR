@@ -24,6 +24,13 @@ class Vehicle:
         m = self.mconfig
         GW = self.GW
         self.misSize = float('nan')
+
+        if v['Main Rotor']['NumRotors'] == 2:
+            v['Antitorque']['AntitorquePowerFactor'] = 0.05
+            v['Weights']['BaselineEmptyWeightFraction'] = v['Weights']['BaselineEmptyWeightFraction'] * 1.05
+        if v['Aux Propulsion']['NumAuxProps'] > 0:
+            v['Weights']['BaselineEmptyWeightFraction'] = v['Weights']['BaselineEmptyWeightFraction'] * 1.05
+
         v['Body']['FlatPlateDrag'] = 0.25 * GW**.5 * (1-v['Body']['DragTechImprovementFactor']) #0.015 * GW**0.67 # flat plate drag area
         v['Main Rotor']['Omega'] = v['Main Rotor']['TipSpeed'] / v['Main Rotor']['Radius']
         v['Main Rotor']['DiskArea'] = math.pi * v['Main Rotor']['Radius']**2 * v['Main Rotor']['NumRotors']
@@ -122,7 +129,7 @@ class Vehicle:
             speed = speeds[-1] + v['Simulation']['PowerCurveResolution']
             v['Condition']['Speed'] = speed
             v['Condition']['Density'] = self.density(0) # SL
-            powersSL.append(float('nan')) #self.powerReq())
+            powersSL.append(float('nan')) #self.powerReq()) # float('nan')
             powersCruise.append(float('nan'))
             speeds.append(speed)
         # Find cruise hover power and start out the array

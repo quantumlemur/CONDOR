@@ -1,4 +1,5 @@
 import math
+import time
 from vehicle import Vehicle
 from configobj import ConfigObj
 
