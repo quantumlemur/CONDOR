@@ -240,7 +240,7 @@ class Rotor:
         lastP = 0
         steps = 0
         tol = tolerancePct / 100
-        while np.isfinite(P) and steps<maxSteps and abs(theta_0)<math.pi/4 and not (abs(Fz-L)/Fz<tol and abs(lastP-P)/P<tol):
+        while np.isfinite(P) and steps<maxSteps and abs(theta_0)<math.pi/4 and not (abs(Fz-L)/Fz<tol and abs(lastP-P)/P<tol) and abs(P)<50000:
             steps += 1
             #### These following equations are from slides ~70-80 in Part2.ppt of AE6070 notes.  All angles relative to flight path?
             # find the effective blade section angle of attack
@@ -302,7 +302,7 @@ class Rotor:
         self.theta_1s = theta_1s
         self.beta_0 = beta_0
 
-        if abs(Fz-L)/Fz<tol and abs(lastP-P)/lastP<tol and abs(theta_0)<math.pi/4:
+        if abs(Fz-L)/Fz<tol and abs(lastP-P)/lastP<tol and abs(theta_0)<math.pi/4 and abs(P)<50000:
             P_total = Pinduced + Pprofile
         else:
             if debug: print('%s < %s       %s < %s' % (abs(Fz-L)/Fz, tol, tol, tol))
