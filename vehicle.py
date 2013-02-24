@@ -47,7 +47,6 @@ class Vehicle:
             v['Body']['FlatPlateDrag'] = v['Body']['FlatPlateDrag'] * 1.1
         if v['Aux Propulsion']['NumAuxProps'] > 0:
             v['Weights']['BaselineEmptyWeightFraction'] = v['Weights']['BaselineEmptyWeightFraction'] * 1.05
-            v['Body']['FlatPlateDrag'] = v['Body']['FlatPlateDrag'] * 1.05
         v['Body']['DownwashFactor'] = 0.07 + min(v['Wing']['SpanRadiusRatio'],2.)/100
         
         self.blade = Blade(c81File='Config/%s'%v['Main Rotor']['AirfoilFile'], skip_header=0, skip_footer=0, rootChord=v['Main Rotor']['RootChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout']/v['Main Rotor']['Radius'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
@@ -363,9 +362,6 @@ class Vehicle:
         v['Condition']['SpeedOfSound'] = self.speedOfSound(Density)
         v['Condition']['Fx'] = ForwardThrust_perRotor
         v['Condition']['Fz'] = VerticalLift_perRotor
-
-        if totalPower>25000:
-            self.recordTrimFailure()
 
         if debug: pvar(locals(), ('singleRotorPower', 'totalPower'))
         return totalPower
