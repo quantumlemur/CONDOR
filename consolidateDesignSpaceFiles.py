@@ -23,7 +23,7 @@ if os.path.isfile(finalOutputFileName):
     with open(finalOutputFileName, 'rb') as f:
         reader = csv.DictReader(f)
         keys = sorted(reader.fieldnames)
-        numkeys = len(keys)
+        numKeys = len(keys)
     files = os.listdir(folder)
     with open(outputFileName, 'wb') as f:
         writer = csv.DictWriter(f, keys, delimiter=',')
@@ -34,10 +34,10 @@ if os.path.isfile(finalOutputFileName):
                 with open(folder + inputFile, 'rb') as openCsvFile:
                     reader = csv.DictReader(openCsvFile)
                     for row in reader:
-                        if len(row) == numKeys:
-                            writer.writerow(row)
-                        else:
+                        if '' in row.values():
                             print 'Skipping incomplete line in %s' % inputFile
+                        else:
+                            writer.writerow(row)
                 os.remove(folder + inputFile)
     os.rename(outputFileName, finalOutputFileName)
 else:
