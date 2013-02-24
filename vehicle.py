@@ -297,6 +297,7 @@ class Vehicle:
                 power = self.powerReq()
                 if math.isnan(power):
                     self.recordTrimFailure()
+                    v['Sizing Results']['MisSize'] = float('nan')
                     return
                 fuel = self.SFC(power) * power * (duration/60)
                 w -= fuel
