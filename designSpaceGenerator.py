@@ -132,7 +132,7 @@ if __name__ == '__main__':
                 # update the runfile with current status
                 os.remove(runFile)
                 currentTime = time.time()
-                runFile = 'Output/running_%s   %d good     %d per hr     %d m remaining' % (os.environ['COMPUTERNAME'], goodRows, goodRows/(currentTime-startTime)*60*60, (endTime-currentTime)/60)
+                runFile = 'Output/running_%s        %d good        %d per hr        %d m left' % (os.environ['COMPUTERNAME'], goodRows, goodRows/(currentTime-startTime)*60*60, (endTime-currentTime)/60)
                 with open(runFile, 'w') as openRunFile: openRunFile.write('blah')
                 if gotKeys:
                     writer.writerow(flatdict)
