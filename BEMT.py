@@ -199,8 +199,8 @@ class Rotor:
         """Attempts to trim the rotor at given conditions.  Will re-use trim variables from last time if possible.
         Note that "drag" and "weight" in the variables are really just the veritcal and horizontal components of
         the force that the rotor is generating."""
-        # short circuit if we know we have too low of a solidity; this'll save a lot of computation time on bad runs
-        if self.solidity<0.05:
+        # short circuit if we know we have too low of a solidity or too high of a disk loading; this'll save computation time on bad runs
+        if self.solidity<0.05 or math.sqrt(Fx**2+Fz**2)/self.diskArea>25:
             return float('nan')
 
         psi = self.psi
@@ -240,7 +240,7 @@ class Rotor:
         lastP = 0
         steps = 0
         tol = tolerancePct / 100
-        while np.isfinite(P) and steps<maxSteps and abs(theta_0)<math.pi/4 and not (abs(Fz-L)/Fz<tol and abs(lastP-P)/P<tol) and abs(P)<50000:
+        while np.isfinite(P) and steps<maxSteps and abs(theta_0)<math.pi/4 and not (abs(Fz-L)/Fz<tol and abs(lastP-P)/P<tol) and abs(P)<40000:
             steps += 1
             #### These following equations are from slides ~70-80 in Part2.ppt of AE6070 notes.  All angles relative to flight path?
             # find the effective blade section angle of attack
@@ -302,7 +302,7 @@ class Rotor:
         self.theta_1s = theta_1s
         self.beta_0 = beta_0
 
-        if abs(Fz-L)/Fz<tol and abs(lastP-P)/lastP<tol and abs(theta_0)<math.pi/4 and abs(P)<50000:
+        if abs(Fz-L)/Fz<tol and abs(lastP-P)/lastP<tol and abs(theta_0)<math.pi/4 and abs(P)<40000:
             P_total = Pinduced + Pprofile
         else:
             if debug: print('%s < %s       %s < %s' % (abs(Fz-L)/Fz, tol, tol, tol))
@@ -417,7 +417,7 @@ if __name__ == '__main__':
         V = speeds[i]
         print V
         Fhorizontal = 1./2 * rho * V**2 * f
-        Fvertical = 26000. # pounds
+        Fvertical = 5122#26000. # pounds
         P_tot[i] = rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=v['Simulation']['MaxSteps']) + Fhorizontal*V/550
     import matplotlib.pyplot as plt
     plt.figure()
