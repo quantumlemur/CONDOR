@@ -10,11 +10,19 @@ from rf import SizedVehicle
 from configobj import ConfigObj
 from validate import Validator
 
-runTime = .95*60*60 # on my computer, I run about 25 cases/minute, or 1500/hour, and seem to get about 1 good case per minute out of it
+runTime = 1*60*60 # on my computer, I run about 25 cases/minute, or 1500/hour, and seem to get about 1 good case per minute out of it
 
 inputs = (('Main Rotor', 'NumRotors'), ('Wing', 'SpanRadiusRatio'), ('Wing', 'WingAspectRatio'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'TaperRatio'), ('Main Rotor', 'TipTwist'), ('Main Rotor', 'Radius'), ('Main Rotor', 'TipSpeed'), ('Main Rotor', 'RootChord'), ('Main Rotor', 'NumBlades'))
 inputRanges = ((1, 2), (0., 4.), (3., 9.), (0, 1), (.6, 1.), (-16, -4), (15., 35.), (400., 800.), (.5, 3.), (2, 6))
 
+idleFile = 'Output/AllComputersKeepIdling'
+activelyRunFile = 'Output/GoComputersGo'
+
+computerName = ''
+try:
+    computerName = os.uname()[1]
+except:
+    computerName = os.environ['COMPUTERNAME']
 
 class Worker(multiprocessing.Process):
     
@@ -58,7 +66,7 @@ class Task(object):
             if section.name not in ['Condition', 'Trim Failure']:
                 flatdict[key] = section[key]
         v.walk(flatten)
-        flatdict['COMPUTERNAME'] = os.environ['COMPUTERNAME']
+        flatdict['COMPUTERNAME'] = computerName
         if flatdict['GoodRun']:
             return flatdict
         else:
@@ -85,8 +93,9 @@ def fmtTime(total):
 
 if __name__ == '__main__':
     startTime = time.clock()
+
     # write the "I am currently running" file
-    runFile = 'Output/running_%s' % os.environ['COMPUTERNAME']
+    runFile = 'Output/running_%s' % computerName
     with open(runFile, 'w') as f: f.write('blah')
     # ok now let's start the actual stuff
     v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
@@ -97,54 +106,61 @@ if __name__ == '__main__':
     m.validate(mvdt)
     tasks = multiprocessing.JoinableQueue()
     results = multiprocessing.Queue()
-    numworkers = 3 if os.environ['COMPUTERNAME']=='LYNX' else multiprocessing.cpu_count()*2
-    workers = [Worker(tasks, results) for i in xrange(numworkers)]
-    for w in workers:
-        w.start()
 
-    # find our output file name
-    fnum = 0
-    fileNameTemplate = 'Output/designSpace_%s_%d.csv'
-    fileName = fileNameTemplate % (os.environ['COMPUTERNAME'], fnum)
-    while os.path.isfile(fileName):
-        fnum += 1
-        fileName = fileNameTemplate % (os.environ['COMPUTERNAME'], fnum)
-    startTime = time.time()
-    endTime = startTime + runTime
-    # keep looping until we actually get our first real result
-    gotKeys = False
-    goodRows = 0
-    totalRows = 0
-    outstandingTasks = 1
-    tasks.put(Task(v, m))
-    with open(fileName, 'wb') as f:
-        while outstandingTasks > 0:
-            showProgress('%d good, %d total, %d outstanding' % (goodRows, totalRows, outstandingTasks), startTime, time.time(), endTime)
-            if outstandingTasks<multiprocessing.cpu_count()*2 and time.time()<endTime:
-                for i in xrange(multiprocessing.cpu_count()):
-                    tasks.put(Task(v, m))
-                    outstandingTasks += 1
-            flatdict = results.get()
-            outstandingTasks -= 1
-            totalRows += 1
-            if flatdict is not None:
-                goodRows += 1
-                # update the runfile with current status
-                os.remove(runFile)
-                currentTime = time.time()
-                runFile = 'Output/running_%s        %d good        %d per hr        %d m left' % (os.environ['COMPUTERNAME'], goodRows, goodRows/(currentTime-startTime)*60*60, (endTime-currentTime)/60)
-                with open(runFile, 'w') as openRunFile: openRunFile.write('blah')
-                if gotKeys:
-                    writer.writerow(flatdict)
-                else:
-                    keys = flatdict.keys()
-                    writer = csv.DictWriter(f, keys, delimiter=',')
-                    writer.writerow({key:key for key in keys})
-                    writer.writerow(flatdict)
-                    f.flush()
-                    gotKeys = True
-    for i in xrange(numworkers):
-        tasks.put(None)
+
+    while os.isfile(idleFile):
+        if os.isfile(activelyRunFile):
+            numworkers = 3 if computerName=='LYNX' else multiprocessing.cpu_count()*2
+            workers = [Worker(tasks, results) for i in xrange(numworkers)]
+            for w in workers:
+                w.start()
+
+            # find our output file name
+            fnum = 0
+            fileNameTemplate = 'Output/designSpace_%s_%d.csv'
+            fileName = fileNameTemplate % (computerName, fnum)
+            while os.path.isfile(fileName):
+                fnum += 1
+                fileName = fileNameTemplate % (computerName, fnum)
+            startTime = time.time()
+            endTime = startTime + runTime
+            # keep looping until we actually get our first real result
+            gotKeys = False
+            goodRows = 0
+            totalRows = 0
+            outstandingTasks = 1
+            tasks.put(Task(v, m))
+            with open(fileName, 'wb') as f:
+                while outstandingTasks>0:
+                    showProgress('%d good, %d total, %d outstanding' % (goodRows, totalRows, outstandingTasks), startTime, time.time(), endTime)
+                    if outstandingTasks<multiprocessing.cpu_count()*2 and os.isfile(activelyRunFile):
+                        for i in xrange(multiprocessing.cpu_count()):
+                            tasks.put(Task(v, m))
+                            outstandingTasks += 1
+                    flatdict = results.get()
+                    outstandingTasks -= 1
+                    totalRows += 1
+                    if flatdict is not None:
+                        goodRows += 1
+                        # update the runfile with current status
+                        os.remove(runFile)
+                        currentTime = time.time()
+                        runFile = 'Output/running_%s        %d good        %d per hr        %d m left' % (computerName, goodRows, goodRows/(currentTime-startTime)*60*60, (endTime-currentTime)/60)
+                        with open(runFile, 'w') as openRunFile: openRunFile.write('blah')
+                        if gotKeys:
+                            writer.writerow(flatdict)
+                        else:
+                            keys = flatdict.keys()
+                            writer = csv.DictWriter(f, keys, delimiter=',')
+                            writer.writerow({key:key for key in keys})
+                            writer.writerow(flatdict)
+                            f.flush()
+                            gotKeys = True
+            print ('%s missing, halting workers.' % activelyRunFile)
+            for i in xrange(numworkers):
+                tasks.put(None)
+        print ('Idling, sleeping 10 seconds.  Remove %s to kill all clients.     %s' % strftime("%a, %d %b %Y %H:%M:%S", time.time())
+        time.sleep(10)
     # join/close the tasks queue
     tasks.join()
     # remove the "I'm currently running" file
