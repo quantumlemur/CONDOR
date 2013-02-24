@@ -15,14 +15,26 @@ runTime = 1*60*60 # on my computer, I run about 25 cases/minute, or 1500/hour, a
 inputs = (('Main Rotor', 'NumRotors'), ('Wing', 'SpanRadiusRatio'), ('Wing', 'WingAspectRatio'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'TaperRatio'), ('Main Rotor', 'TipTwist'), ('Main Rotor', 'Radius'), ('Main Rotor', 'TipSpeed'), ('Main Rotor', 'RootChord'), ('Main Rotor', 'NumBlades'))
 inputRanges = ((1, 2), (0., 4.), (3., 9.), (0, 1), (.6, 1.), (-16, -4), (15., 35.), (400., 800.), (.5, 3.), (2, 6))
 
-idleFile = 'Output/AllComputersKeepIdling'
-activelyRunFile = 'Output/GoComputersGo'
+runFileFolder = 'Output/RunFiles/'
+outputFolder = 'Output/'
+idleFile = 'AAAA_Idle'
+activelyRunFile = 'AAAA_Run'
+killFilePrefix = 'AAAA_KILL_'
+
+
+idleSleepTime = 10
+minRunFileUpdateTime = 60 # minimum number of seconds between runfile updates
+
+lastRunFileUpdateTime = 0
+startTime = time.time() - 1 # subtract one second so we don't divide by zero on the first update
 
 computerName = ''
 try:
     computerName = os.uname()[1]
 except:
     computerName = os.environ['COMPUTERNAME']
+runFile = ''
+killFile = killFilePrefix + computerName
 
 class Worker(multiprocessing.Process):
     
@@ -91,13 +103,39 @@ def fmtTime(total):
     seconds = (int) (total - hours*60*60 - minutes*60)
     return '%02d:%02d:%02d' % (hours, minutes, seconds)
 
-if __name__ == '__main__':
-    startTime = time.clock()
+def updateStatus(state, goodRows=0, totalRows=0, outstandingTasks=1):
+    global runFile
+    global startTime
+    global lastRunFileUpdateTime
+    global computerName
+    global minRunFileUpdateTime
+    elapsedTime = time.time() - startTime
+    if state == 'starting':
+        status = 'starting'
+    elif state == 'idling':
+        status = 'idling'
+    elif state == 'running':
+        status = 'running        %dg        %dt        %dgph        %dtph' % (goodRows, totalRows, goodRows/elapsedTime*60*60, totalRows/elapsedTime*60*60)
+    elif state == 'stopping':
+        status = 'stopping        %d tasks remaining' % (outstandingTasks)
+    elif state == 'quit':
+        status = 'done, halting'
+    statusLine = '%-20s %-60s %30s' % (computerName, status, time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime()))
+    print(statusLine)
+    updateElapsedTime = time.time() - lastRunFileUpdateTime
+    if state == 'quit':
+        if os.path.isfile(runFile): os.remove(runFile)
+    elif updateElapsedTime > minRunFileUpdateTime:
+        if os.path.isfile(runFile): os.remove(runFile)
+        runFile = '%s%s %s        %s' % (runFileFolder, computerName, status, time.strftime("%H.%M.%S", time.localtime()))
+        with open(runFile, 'w') as f: f.write('blah')
+        lastRunFileUpdateTime = time.time()
 
-    # write the "I am currently running" file
-    runFile = 'Output/running_%s' % computerName
-    with open(runFile, 'w') as f: f.write('blah')
-    # ok now let's start the actual stuff
+
+
+
+
+if __name__ == '__main__':
     v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
     m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
@@ -106,10 +144,12 @@ if __name__ == '__main__':
     m.validate(mvdt)
     tasks = multiprocessing.JoinableQueue()
     results = multiprocessing.Queue()
+    if not os.path.isfile(runFileFolder + idleFile):
+        print('idleFile not found, so I will not run!  Create the file %s%s to keep idling, plus %s%s to run.' % (runFileFolder, idleFile, runFileFolder, activelyRunFile))
 
-
-    while os.isfile(idleFile):
-        if os.isfile(activelyRunFile):
+    while os.path.isfile(runFileFolder + idleFile) and not os.path.isfile(runFileFolder + killFile):
+        if os.path.isfile(runFileFolder + activelyRunFile) and not os.path.isfile(runFileFolder + killFile):
+            updateStatus('starting')
             numworkers = 3 if computerName=='LYNX' else multiprocessing.cpu_count()*2
             workers = [Worker(tasks, results) for i in xrange(numworkers)]
             for w in workers:
@@ -117,36 +157,37 @@ if __name__ == '__main__':
 
             # find our output file name
             fnum = 0
-            fileNameTemplate = 'Output/designSpace_%s_%d.csv'
+            fileNameTemplate = outputFolder + 'designSpace_%s_%d.csv'
             fileName = fileNameTemplate % (computerName, fnum)
             while os.path.isfile(fileName):
                 fnum += 1
                 fileName = fileNameTemplate % (computerName, fnum)
-            startTime = time.time()
-            endTime = startTime + runTime
+            startTime = time.time() - 1 # minus one second so that we don't divide by zero on the first loop
             # keep looping until we actually get our first real result
             gotKeys = False
             goodRows = 0
             totalRows = 0
+            keepRunning = True
             outstandingTasks = 1
             tasks.put(Task(v, m))
             with open(fileName, 'wb') as f:
                 while outstandingTasks>0:
-                    showProgress('%d good, %d total, %d outstanding' % (goodRows, totalRows, outstandingTasks), startTime, time.time(), endTime)
-                    if outstandingTasks<multiprocessing.cpu_count()*2 and os.isfile(activelyRunFile):
-                        for i in xrange(multiprocessing.cpu_count()):
+                    # check if we should stop
+                    if os.path.isfile(runFileFolder + killFile) or not os.path.isfile(runFileFolder + activelyRunFile): keepRunning = False
+                    # add tasks to the queue if we're running low
+                    if outstandingTasks<numworkers and keepRunning:
+                        for i in xrange(numworkers):
                             tasks.put(Task(v, m))
                             outstandingTasks += 1
+                    # update status output
+                    updateStatus('running' if keepRunning else 'stopping', goodRows, totalRows, outstandingTasks=outstandingTasks)
+                    # get a results
                     flatdict = results.get()
                     outstandingTasks -= 1
                     totalRows += 1
+                    # write out result if it's good
                     if flatdict is not None:
                         goodRows += 1
-                        # update the runfile with current status
-                        os.remove(runFile)
-                        currentTime = time.time()
-                        runFile = 'Output/running_%s        %d good        %d per hr        %d m left' % (computerName, goodRows, goodRows/(currentTime-startTime)*60*60, (endTime-currentTime)/60)
-                        with open(runFile, 'w') as openRunFile: openRunFile.write('blah')
                         if gotKeys:
                             writer.writerow(flatdict)
                         else:
@@ -156,16 +197,14 @@ if __name__ == '__main__':
                             writer.writerow(flatdict)
                             f.flush()
                             gotKeys = True
-            print ('%s missing, halting workers.' % activelyRunFile)
             for i in xrange(numworkers):
                 tasks.put(None)
-        print ('Idling, sleeping 10 seconds.  Remove %s to kill all clients.     %s' % strftime("%a, %d %b %Y %H:%M:%S", time.time())
-        time.sleep(10)
+        updateStatus('idling')
+        time.sleep(idleSleepTime)
+
     # join/close the tasks queue
     tasks.join()
-    # remove the "I'm currently running" file
-    if os.path.isfile(runFile):
-        os.remove(runFile)
+    updateStatus('quit')
 
     # print 'Writing out the data!'
     #     for i in xrange(len(output[keys[0]])):
