@@ -129,6 +129,11 @@ if __name__ == '__main__':
             totalRows += 1
             if flatdict is not None:
                 goodRows += 1
+                # update the runfile with current status
+                os.remove(runFile)
+                currentTime = time.time()
+                runFile = 'Output/running_%s   %d good     %.2f per hr     %d m remaining' % (os.environ['COMPUTERNAME'], goodRows, goodRows/(currentTime-startTime)*60*60, (endTime-startTime)/60)
+                with open(runFile, 'w') as openRunFile: openRunFile.write('blah')
                 if gotKeys:
                     writer.writerow(flatdict)
                 else:
@@ -138,11 +143,6 @@ if __name__ == '__main__':
                     writer.writerow(flatdict)
                     f.flush()
                     gotKeys = True
-                    # update the runfile with current status
-                    os.remove(runFile)
-                    currentTime = time.time()
-                    runFile = 'running_%s   %d good     %.2f per hr     %d m remaining' % (os.environ['COMPUTERNAME'], goodRows, goodRows/(currentTime-startTime)*60*60, (endTime-startTime)/60)
-                    with open(runFile, 'w') as f: f.write('blah')
     for i in xrange(numworkers):
         tasks.put(None)
     # join/close the tasks queue
