@@ -10,6 +10,7 @@ finalOutputFileName = folder + 'designSpace_ALL.csv'
 
 
 keys = []
+numKeys = 0
 if os.path.isfile(finalOutputFileName):
     # make backup of complete design space file
     fnum = 0
@@ -22,6 +23,7 @@ if os.path.isfile(finalOutputFileName):
     with open(finalOutputFileName, 'rb') as f:
         reader = csv.DictReader(f)
         keys = sorted(reader.fieldnames)
+        numkeys = len(keys)
     files = os.listdir(folder)
     with open(outputFileName, 'wb') as f:
         writer = csv.DictWriter(f, keys, delimiter=',')
@@ -32,7 +34,10 @@ if os.path.isfile(finalOutputFileName):
                 with open(folder + inputFile, 'rb') as openCsvFile:
                     reader = csv.DictReader(openCsvFile)
                     for row in reader:
-                        writer.writerow(row)
+                        if len(row) == numKeys:
+                            writer.writerow(row)
+                        else:
+                            print 'Skipping incomplete line in %s' % inputFile
                 os.remove(folder + inputFile)
     os.rename(outputFileName, finalOutputFileName)
 else:
