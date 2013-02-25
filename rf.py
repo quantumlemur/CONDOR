@@ -14,10 +14,12 @@ def pvar(locals_, vars_):
 
 class SizedVehicle:
     
-    def __init__(self, vconfig, mconfig):
+    def __init__(self, vconfig, mconfig, airfoildata):
         self.vconfig = vconfig
         self.mconfig = mconfig
         self.vconfig['Sizing Results']['SizedGrossWeight'] = float('nan')
+
+        self.airfoildata = airfoildata 
 
     
     def sizeMission(self):
@@ -31,7 +33,7 @@ class SizedVehicle:
         GWmax = v['Simulation']['GWmax']
         viableCandidate = False
         GW = (GWmax - GWmin) / 2 + GWmin
-        choppah = Vehicle(v, m, GW) # http://www.youtube.com/watch?v=Xs_OacEq2Sk
+        choppah = Vehicle(v, m, GW, self.airfoildata) # http://www.youtube.com/watch?v=Xs_OacEq2Sk
         choppah.flyMission()
         while not (GWmax-GWmin<choppah.vconfig['Simulation']['GWTolerance']) and steps<choppah.vconfig['Simulation']['MaxSteps']:
             # Depending on whether we're oversized or undersized for the mission, adjust our GW limits accordingly
@@ -44,7 +46,7 @@ class SizedVehicle:
                 if choppah.vconfig['Sizing Results']['CouldTrim']: # if we're oversized but trimmable, then we know we have a viable candidate
                     viableCandidate = True
             GW = (GWmax - GWmin) / 2 + GWmin
-            choppah = Vehicle(v, m, GW)
+            choppah = Vehicle(v, m, GW, self.airfoildata)
             choppah.flyMission()
             steps += 1
             if debug:

@@ -47,9 +47,9 @@ class Blade:
     # generated so that cl, cd, etc. can be returned easily later.  It will contain a
     # non-dimensional blade, with everything referenced to a radius of 1.
     
-    def __init__(self, c81File, rootChord, skip_header=0, skip_footer=0, taperRatio=1, tipTwist=0, rootCutout=0, segments=15, dragDivergenceMachNumber=.85):
+    def __init__(self, airfoildata, rootChord, skip_header=0, skip_footer=0, taperRatio=1, tipTwist=0, rootCutout=0, segments=15, dragDivergenceMachNumber=.85):
         self.dragDivergenceMachNumber = dragDivergenceMachNumber
-        airfoildata = np.genfromtxt(c81File, skip_header=skip_header, skip_footer=skip_footer) # read in the airfoil file
+        #airfoildata = np.genfromtxt(c81File, skip_header=skip_header, skip_footer=skip_footer) # read in the airfoil file
         # generate the airfoil data splines.  They are assumed to be in degrees, and are converted to radians
         self.clspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,1])
         self.cdspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,2])

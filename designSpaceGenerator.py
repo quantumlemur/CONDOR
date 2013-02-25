@@ -14,11 +14,18 @@ from validate import Validator
 inputs = (('Main Rotor', 'NumRotors'), ('Wing', 'SpanRadiusRatio'), ('Wing', 'WingAspectRatio'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'TaperRatio'), ('Main Rotor', 'TipTwist'), ('Main Rotor', 'Radius'), ('Main Rotor', 'TipSpeed'), ('Main Rotor', 'RootChord'), ('Main Rotor', 'NumBlades'))
 inputRanges = ((1, 2), (0., 4.), (3., 9.), (0, 1), (.6, 1.), (-16, -4), (15., 35.), (400., 800.), (.5, 3.), (2, 6))
 
-runFileFolder = 'Output/RunFiles/'
-outputFolder = 'Output/'
-idleFile = 'AAAA_Idle'
-activelyRunFile = 'AAAA_Run'
-killFilePrefix = 'AAAA_KILL_'
+
+if os.getcwd().split(os.sep)[-1] == 'CONDOR':
+    runFileFolder = 'Output/RunFiles/'
+    outputFolder = 'Output/'
+else:
+    runFileFolder = '../CONDOR/Output/RunFiles/'
+    outputFolder = '../CONDOR/Output/'
+idleFile = 'AAA_Keep_Idling_ALL'
+activelyRunFile = 'AAA_Computations_Active_ALL'
+killFilePrefix = 'AAAA_FORCEKILL_'
+forceIdleFilePrefix = 'AAAA_FORCEIDLE_'
+inUseFilePrefix = 'AAAA_InUse_'
 
 
 idleSleepTime = 10
@@ -32,8 +39,10 @@ try:
     computerName = os.uname()[1]
 except:
     computerName = os.environ['COMPUTERNAME']
-runFile = ''
+runFile = '%s%s %s' % (runFileFolder, computerName, 'quit')
 killFile = killFilePrefix + computerName
+forceIdleFile = forceIdleFilePrefix + computerName
+inUseFile = inUseFilePrefix + computerName
 
 class Worker(multiprocessing.Process):
     
@@ -53,9 +62,10 @@ class Worker(multiprocessing.Process):
             self.results.put(flatdict)
 
 class Task(object):
-    def __init__(self, vconfig, mconfig):
+    def __init__(self, vconfig, mconfig, airfoildata):
         self.vconfig = vconfig
         self.mconfig = mconfig
+        self.airfoildata = airfoildata
     def __call__(self):
         vconfig = ConfigObj(self.vconfig)
         mconfig = ConfigObj(self.mconfig)
@@ -65,7 +75,7 @@ class Task(object):
             else:
                 val = random.uniform(inputRanges[i][0], inputRanges[i][1])
             vconfig[inputs[i][0]][inputs[i][1]] = val
-        vehicle = SizedVehicle(vconfig, mconfig)
+        vehicle = SizedVehicle(vconfig, mconfig, self.airfoildata)
         sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object
         sizedVehicle.generatePowerCurve()
         sizedVehicle.findHoverCeiling()
@@ -118,15 +128,15 @@ def updateStatus(state, goodRows=0, totalRows=0, outstandingTasks=1):
     elif state == 'stopping':
         status = 'stopping        %d tasks remaining' % (outstandingTasks)
     elif state == 'quit':
-        status = 'done, halting'
+        status = 'quit'
     statusLine = '%-20s %-60s %30s' % (computerName, status, time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime()))
     print(statusLine)
     updateElapsedTime = time.time() - lastRunFileUpdateTime
-    if state == 'quit':
+    if updateElapsedTime>minRunFileUpdateTime or state=='quit':
         if os.path.isfile(runFile): os.remove(runFile)
-    elif updateElapsedTime > minRunFileUpdateTime:
-        if os.path.isfile(runFile): os.remove(runFile)
-        runFile = '%s%s %s        %s' % (runFileFolder, computerName, status, time.strftime("%H.%M.%S", time.localtime()))
+        runFile = '%s%s %s' % (runFileFolder, computerName, status)
+        if state != 'quit':
+            runFile = '%s        %s' % (runFile, time.strftime("%H.%M.%S", time.localtime()))
         with open(runFile, 'w') as f: f.write('blah')
         lastRunFileUpdateTime = time.time()
 
@@ -141,15 +151,21 @@ if __name__ == '__main__':
     v.validate(vvdt)
     mvdt = Validator()
     m.validate(mvdt)
+    c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
+    airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
     tasks = multiprocessing.JoinableQueue()
     results = multiprocessing.Queue()
     if not os.path.isfile(runFileFolder + idleFile):
+
         print('idleFile not found, so I will not run!  Create the file %s%s to keep idling, plus %s%s to run.' % (runFileFolder, idleFile, runFileFolder, activelyRunFile))
 
-    while os.path.isfile(runFileFolder + idleFile) and not os.path.isfile(runFileFolder + killFile):
-        if os.path.isfile(runFileFolder + activelyRunFile) and not os.path.isfile(runFileFolder + killFile):
+    while os.path.isfile(runFileFolder+idleFile) and not os.path.isfile(runFileFolder + killFile):
+        if os.path.isfile(runFileFolder+activelyRunFile) and not os.path.isfile(runFileFolder+killFile)  and not os.path.isfile(runFileFolder+forceIdleFile):
             updateStatus('starting')
-            numworkers = 3 if computerName=='LYNX' else multiprocessing.cpu_count()*2
+            if os.path.isfile(runFileFolder+inUseFile):
+                numworkers = multiprocessing.cpu_count() - 1
+            else:
+                numworkers = multiprocessing.cpu_count() * 2
             workers = [Worker(tasks, results) for i in xrange(numworkers)]
             for w in workers:
                 w.start()
@@ -168,15 +184,15 @@ if __name__ == '__main__':
             totalRows = 0
             keepRunning = True
             outstandingTasks = 1
-            tasks.put(Task(v, m))
+            tasks.put(Task(v, m, airfoildata))
             with open(fileName, 'wb') as f:
                 while outstandingTasks>0:
                     # check if we should stop
-                    if os.path.isfile(runFileFolder + killFile) or not os.path.isfile(runFileFolder + activelyRunFile): keepRunning = False
+                    if os.path.isfile(runFileFolder+killFile) or os.path.isfile(runFileFolder+forceIdleFile) or not os.path.isfile(runFileFolder+activelyRunFile): keepRunning = False
                     # add tasks to the queue if we're running low
                     if outstandingTasks<numworkers and keepRunning:
                         for i in xrange(numworkers):
-                            tasks.put(Task(v, m))
+                            tasks.put(Task(v, m, airfoildata))
                             outstandingTasks += 1
                     # update status output
                     updateStatus('running' if keepRunning else 'stopping', goodRows, totalRows, outstandingTasks=outstandingTasks)

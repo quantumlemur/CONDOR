@@ -13,10 +13,11 @@ def pvar(locals_, vars_):
 
 class Vehicle:
     
-    def __init__(self, vconfig, mconfig, GW):
+    def __init__(self, vconfig, mconfig, GW, airfoildata):
         self.vconfig = ConfigObj(vconfig)
         self.mconfig = ConfigObj(mconfig)
         self.GW = GW
+        self.airfoildata = airfoildata
         self.setup()
 
     def setup(self):
@@ -48,8 +49,9 @@ class Vehicle:
         if v['Aux Propulsion']['NumAuxProps'] > 0:
             v['Weights']['BaselineEmptyWeightFraction'] = v['Weights']['BaselineEmptyWeightFraction'] * 1.05
         v['Body']['DownwashFactor'] = 0.07 + min(v['Wing']['SpanRadiusRatio'],2.)/100
+
         
-        self.blade = Blade(c81File='Config/%s'%v['Main Rotor']['AirfoilFile'], skip_header=0, skip_footer=0, rootChord=v['Main Rotor']['RootChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout']/v['Main Rotor']['Radius'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
+        self.blade = Blade(airfoildata=self.airfoildata, skip_header=0, skip_footer=0, rootChord=v['Main Rotor']['RootChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout']/v['Main Rotor']['Radius'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
         self.rotor = Rotor(self.blade, psiSegments=v['Simulation']['numBladeElementSegments'], Vtip=v['Main Rotor']['TipSpeed'], radius=v['Main Rotor']['Radius'], numblades=v['Main Rotor']['NumBlades'])
         v['Main Rotor']['Solidity'] = self.rotor.solidity
         self.scaleEngine()
