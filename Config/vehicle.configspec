@@ -1,5 +1,4 @@
 [Main Rotor]
-Radius = float()
 NumRotors = integer()
 DiskLoading = float()
 NumBlades = integer()
@@ -9,7 +8,7 @@ Kint = float()
 Kov = float()
 AirfoilFile = string()
 DragDivergenceMachNumber = float()
-RootChord = float()
+AverageChord = float()
 TaperRatio = float()
 TipTwist = float()
 RootCutout = float()
@@ -64,7 +63,12 @@ GWTolerance = float()
 TrimAccuracyPercentage = float()
 numBladeElementSegments = integer()
 PowerCurveResolution = float()
-HoverCeilingResolution = float()
+HoverCeilingMax = float()
+HoverCeilingMin = float()
+HoverCeilingTolerance = float()
+
+[Engine Scaling]
+RequiredHoverHeight = float()
 
 [Condition]
 CruiseAltitude = float()

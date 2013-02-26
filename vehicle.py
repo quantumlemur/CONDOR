@@ -26,11 +26,20 @@ class Vehicle:
         GW = self.GW
         self.misSize = float('nan')
 
+        # Engine scaling 
+        v['Condition']['CruiseAltitude'] = m['Segment 2']['Altitude']
+        v['Engine Scaling']['RequiredHoverHeight'] = m['Segment 1']['Altitude']
+        v['Wing']['MaxSpeed'] = m['Segment 2']['Speed']
 
-        v['Body']['FlatPlateDrag'] = 0.2 * GW**.5 * (1-v['Body']['DragTechImprovementFactor']) #0.015 * GW**0.67 # flat plate drag area
+        v['Performance']['IngressSpeed'] = m['Segment 2']['Speed']
+        v['Performance']['MissionRange'] = m['Segment 2']['Distance']
+
+
+        v['Body']['FlatPlateDrag'] = 0.25 * GW**.5 * (1-v['Body']['DragTechImprovementFactor']) #0.015 * GW**0.67 # flat plate drag area
+        v['Main Rotor']['Radius'] = math.sqrt(GW / (math.pi * v['Main Rotor']['DiskLoading'] * v['Main Rotor']['NumRotors']))
         v['Main Rotor']['Omega'] = v['Main Rotor']['TipSpeed'] / v['Main Rotor']['Radius']
         v['Main Rotor']['DiskArea'] = math.pi * v['Main Rotor']['Radius']**2 * v['Main Rotor']['NumRotors']
-        v['Main Rotor']['DiskLoading'] = GW / v['Main Rotor']['NumRotors'] / v['Main Rotor']['DiskArea']
+        v['Main Rotor']['AverageChord'] = v['Main Rotor']['DiskArea']*v['Main Rotor']['Solidity'] / (v['Main Rotor']['Radius']*(1-v['Main Rotor']['RootCutout'])*v['Main Rotor']['NumBlades'])
         v['Wing']['WingSpan'] = v['Main Rotor']['Radius'] * v['Wing']['SpanRadiusRatio']
         v['Wing']['WingArea'] = v['Wing']['WingSpan']**2 / v['Wing']['WingAspectRatio']
         
@@ -51,9 +60,8 @@ class Vehicle:
         v['Body']['DownwashFactor'] = 0.07 + min(v['Wing']['SpanRadiusRatio'],2.)/100
 
         
-        self.blade = Blade(airfoildata=self.airfoildata, skip_header=0, skip_footer=0, rootChord=v['Main Rotor']['RootChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout']/v['Main Rotor']['Radius'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
+        self.blade = Blade(airfoildata=self.airfoildata, skip_header=0, skip_footer=0, averageChord=v['Main Rotor']['AverageChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
         self.rotor = Rotor(self.blade, psiSegments=v['Simulation']['numBladeElementSegments'], Vtip=v['Main Rotor']['TipSpeed'], radius=v['Main Rotor']['Radius'], numblades=v['Main Rotor']['NumBlades'])
-        v['Main Rotor']['Solidity'] = self.rotor.solidity
         self.scaleEngine()
         self.scaleWeights()
         self.setMission(m)
@@ -80,7 +88,12 @@ class Vehicle:
         # weight scaling
         MCP = v['Powerplant']['MRP'] / 1.3
         scaledEngineWeight = w['NumEngines']*((0.1054*(MCP/w['NumEngines'])**2.+358*(MCP/w['NumEngines'])+2.757*10.**4.)/((MCP/w['NumEngines'])+1180))
-        scaledDriveSystemWeight = (525.*(self.GW/1000.)**1.14)/((self.GW/MCP)**0.763*v['Main Rotor']['DiskLoading']**0.381)
+        try:
+            scaledDriveSystemWeight = (525.*(self.GW/1000.)**1.14)/((self.GW/MCP)**0.763*v['Main Rotor']['DiskLoading']**0.381)
+        except:
+            scaledDriveSystemWeight = 999999999.
+            print scaledDriveSystemWeight
+            print MCP
         scaledWingWeight = 0.00272*self.GW**1.4/v['Main Rotor']['DiskLoading']**0.8*v['Wing']['SpanRadiusRatio']**0.8
         scaledStructureWeight = improvedStructureWeightFraction * self.GW
         
@@ -165,16 +178,22 @@ class Vehicle:
     def findHoverCeiling(self):
         v = self.vconfig
         m = self.mconfig
-        powerAvailable = 999999
-        powerRequired = 0
-        altitude = 0
+        HCmax = v['Simulation']['HoverCeilingMax']
+        HCmin = v['Simulation']['HoverCeilingMin']
+        altitude = (HCmax + HCmin) / 2
+        steps = 0
         v['Condition']['Weight'] = self.GW
         v['Condition']['Speed'] = 0.
-        while (powerAvailable>powerRequired) and (not math.isnan(powerRequired)):
-            altitude += v['Simulation']['HoverCeilingResolution']
+        while steps<v['Simulation']['MaxSteps'] and (HCmax-HCmin)>v['Simulation']['HoverCeilingTolerance'] :
             v['Condition']['Density'] = self.density(altitude)
             powerRequired = self.powerReq()
             powerAvailable = self.powerAvailable(altitude)
+            if debug: pvar(locals(), ('HCmin', 'altitude', 'HCmax', 'powerRequired', 'powerAvailable'))
+            if math.isnan(powerRequired) or powerRequired>powerAvailable:
+                HCmax = altitude
+            else:
+                HCmin = altitude
+            altitude = (HCmax + HCmin) / 2
         v['Performance']['HoverCeiling'] = altitude
     
     def density(self, altitude):
@@ -233,25 +252,30 @@ class Vehicle:
     def scaleEngine(self):
         """Scales the engine for high hot hover and fast cruise."""
         v = self.vconfig
-        altitude = 6000.
-        v['Condition']['Weight'] = self.GW
-        v['Condition']['Density'] = self.density(altitude)
-        v['Condition']['Speed'] = 0 # hover
-        hoverpower = self.powerReq()
-        if math.isnan(hoverpower):
-            self.recordTrimFailure()
-        hoverpower = hoverpower * self.density(0) / self.density(altitude) # scale engine to sea level
-        v['Engine Scaling']['HoverPower'] = hoverpower
+        # altitude = v['Engine Scaling']['RequiredHoverHeight']
+        # v['Condition']['Weight'] = self.GW
+        # v['Condition']['Density'] = self.density(altitude)
+        # v['Condition']['Speed'] = 0 # hover
+        # hoverpower = self.powerReq()
+        # if math.isnan(hoverpower):
+        #     self.recordTrimFailure()
+        #     hoverpower = 1.
+        # v['Engine Scaling']['HoverPowerAtAlt'] = hoverpower
+        # hoverpower = hoverpower * self.density(0) / self.density(altitude) # scale engine to sea level
+        # v['Engine Scaling']['HoverPower'] = hoverpower
+        hoverpower = 1.
         
-        v['Condition']['Weight'] = self.GW
-        altitude = 13000.
-        v['Condition']['Density'] = self.density(altitude)
-        v['Condition']['Speed'] = v['Wing']['MaxSpeed'] / 2. # 1/2 of max speed
-        ceilingpower = self.powerReq()
-        if math.isnan(ceilingpower):
-            self.recordTrimFailure()
-        ceilingpower = ceilingpower * self.density(0) / self.density(altitude) # scale engine to sea level
-        v['Engine Scaling']['CeilingPower'] = ceilingpower
+        # v['Condition']['Weight'] = self.GW
+        # altitude = 13000.
+        # v['Condition']['Density'] = self.density(altitude)
+        # v['Condition']['Speed'] = v['Wing']['MaxSpeed'] / 2. # 1/2 of max speed
+        # ceilingpower = self.powerReq()
+        # if math.isnan(ceilingpower):
+        #     self.recordTrimFailure()
+        #     ceilingpower = 1.
+        # ceilingpower = ceilingpower * self.density(0) / self.density(altitude) # scale engine to sea level
+        # v['Engine Scaling']['CeilingPower'] = ceilingpower
+        ceilingpower = 1.
 
         v['Condition']['Weight'] = self.GW
         altitude = v['Condition']['CruiseAltitude']
@@ -260,9 +284,10 @@ class Vehicle:
         cruisepower = self.powerReq()
         if math.isnan(cruisepower):
             self.recordTrimFailure()
+            cruisepower = 1.
         cruisepower = cruisepower * self.density(0) / self.density(altitude) # scale engine to sea level
         v['Engine Scaling']['CruisePower'] = cruisepower
-        
+
         power = max(hoverpower, ceilingpower, cruisepower)
         gamma = power / self.vconfig['Powerplant']['BaselineMRP']
         sfc = (-0.00932*gamma**2+0.865*gamma+0.445)/(gamma+0.301)*v['Powerplant']['BaselineSFC']
@@ -274,6 +299,9 @@ class Vehicle:
     def flyMission(self):
         m = self.mconfig
         v = self.vconfig
+        v['Sizing Results']['MisSize'] = float('nan')
+        if not v['Sizing Results']['CouldTrim']:
+            return
         elapsed = 0 # elapsed time since mission start
         fuelAvailable = self.GW - v['Weights']['EmptyWeight'] - v['Weights']['UsefulLoad'] # total fuel weight available, pounds
         w = v['Weights']['EmptyWeight'] + fuelAvailable
@@ -299,7 +327,6 @@ class Vehicle:
                 power = self.powerReq()
                 if math.isnan(power):
                     self.recordTrimFailure()
-                    v['Sizing Results']['MisSize'] = float('nan')
                     return
                 fuel = self.SFC(power) * power * (duration/60)
                 w -= fuel
@@ -361,12 +388,6 @@ class Vehicle:
         totalPower = singleRotorPower*v['Main Rotor']['NumRotors'] + singlePropPower*v['Aux Propulsion']['NumAuxProps'] + TotalDrag*V/550 # Is this right?  should the parasite power be just added on directly like this?
         totalPower = totalPower / (1-v['Antitorque']['AntitorquePowerFactor']) / (1-v['Powerplant']['TransmissionEfficiency'])
 
-        # record a few values
-        v['Condition']['SpeedOfSound'] = self.speedOfSound(Density)
-        v['Condition']['Fx'] = ForwardThrust_perRotor
-        v['Condition']['Fz'] = VerticalLift_perRotor
-
-        if debug: pvar(locals(), ('singleRotorPower', 'totalPower'))
         return totalPower
         
 
@@ -385,13 +406,16 @@ if __name__ == '__main__':
     from configobj import ConfigObj
     from validate import Validator
     import matplotlib.pyplot as plt
+    import numpy as np
     v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
     m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
     v.validate(vvdt)
     mvdt = Validator()
     m.validate(mvdt)
-    vehicle = Vehicle(v, m, 26000.)
+    c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
+    airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+    vehicle = Vehicle(v, m, 26000., airfoildata)
     vehicle.flyMission()
     vehicle.generatePowerCurve()
     vehicle.findHoverCeiling()

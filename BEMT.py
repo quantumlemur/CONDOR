@@ -47,7 +47,7 @@ class Blade:
     # generated so that cl, cd, etc. can be returned easily later.  It will contain a
     # non-dimensional blade, with everything referenced to a radius of 1.
     
-    def __init__(self, airfoildata, rootChord, skip_header=0, skip_footer=0, taperRatio=1, tipTwist=0, rootCutout=0, segments=15, dragDivergenceMachNumber=.85):
+    def __init__(self, airfoildata, averageChord, skip_header=0, skip_footer=0, taperRatio=1, tipTwist=0, rootCutout=0, segments=15, dragDivergenceMachNumber=.85):
         self.dragDivergenceMachNumber = dragDivergenceMachNumber
         #airfoildata = np.genfromtxt(c81File, skip_header=skip_header, skip_footer=skip_footer) # read in the airfoil file
         # generate the airfoil data splines.  They are assumed to be in degrees, and are converted to radians
@@ -66,6 +66,7 @@ class Blade:
         twist75 = interpolate.splev(.75, twistspl)
         self.twist -= twist75
         self.theta_tw = tipTwist * math.pi/180.
+        rootChord = 2 * averageChord / (taperRatio + 1)
         chordspl = interpolate.splrep(np.array([rootCutout,1]), np.array([rootChord,rootChord*taperRatio]), k=1)  # k=1 for linear interpolation
         self.chord = interpolate.splev(self.r, chordspl)
 
@@ -199,10 +200,6 @@ class Rotor:
         """Attempts to trim the rotor at given conditions.  Will re-use trim variables from last time if possible.
         Note that "drag" and "weight" in the variables are really just the veritcal and horizontal components of
         the force that the rotor is generating."""
-        # short circuit if we know we have too low of a solidity or too high of a disk loading; this'll save computation time on bad runs
-        if self.solidity<0.05 or math.sqrt(Fx**2+Fz**2)/self.diskArea>25:
-            return float('nan')
-
         psi = self.psi
         r = self.r
         R = self.R

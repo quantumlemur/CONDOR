@@ -11,8 +11,11 @@ from configobj import ConfigObj
 from validate import Validator
 
 
-inputs = (('Main Rotor', 'NumRotors'), ('Wing', 'SpanRadiusRatio'), ('Wing', 'WingAspectRatio'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'TaperRatio'), ('Main Rotor', 'TipTwist'), ('Main Rotor', 'Radius'), ('Main Rotor', 'TipSpeed'), ('Main Rotor', 'RootChord'), ('Main Rotor', 'NumBlades'))
-inputRanges = ((1, 2), (0., 4.), (3., 9.), (0, 1), (.6, 1.), (-16, -4), (15., 35.), (400., 800.), (.5, 3.), (2, 6))
+inputs = (('Main Rotor', 'NumRotors'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'DiskLoading'), ('Main Rotor', 'Solidity'), ('Main Rotor', 'TipSpeed'))
+inputRanges = ((1, 2), (0, 1), (2., 30.), (.05, .15), (400., 800.))
+
+missionInputs = (('Segment 2', 'Distance'), ('Segment 2', 'Speed'))
+missionInputRanges = ((300., 1000.), (100., 250.))
 
 
 if os.getcwd().split(os.sep)[-1] == 'CONDOR':
@@ -75,6 +78,12 @@ class Task(object):
             else:
                 val = random.uniform(inputRanges[i][0], inputRanges[i][1])
             vconfig[inputs[i][0]][inputs[i][1]] = val
+        for i in xrange(len(missionInputs)):
+            if type(mconfig[missionInputs[i][0]][missionInputs[i][1]]) is int:
+                val = random.randint(missionInputRanges[i][0], missionInputRanges[i][1])
+            else:
+                val = random.uniform(missionInputRanges[i][0], missionInputRanges[i][1])
+            mconfig[missionInputs[i][0]][missionInputs[i][1]] = val
         vehicle = SizedVehicle(vconfig, mconfig, self.airfoildata)
         sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object
         sizedVehicle.generatePowerCurve()
@@ -84,7 +93,7 @@ class Task(object):
         v = sizedVehicle.vconfig
         flatdict = {}
         def flatten(section, key):
-            if section.name not in ['Condition', 'Trim Failure']:
+            if section.name not in ['Condition', 'Trim Failure', 'Simulation']:
                 flatdict[key] = section[key]
         v.walk(flatten)
         flatdict['COMPUTERNAME'] = computerName
@@ -145,14 +154,7 @@ def updateStatus(state, goodRows=0, totalRows=0, outstandingTasks=1):
 
 
 if __name__ == '__main__':
-    v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
-    m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
-    vvdt = Validator()
-    v.validate(vvdt)
-    mvdt = Validator()
-    m.validate(mvdt)
-    c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
-    airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+
     tasks = multiprocessing.JoinableQueue()
     results = multiprocessing.Queue()
     if not os.path.isfile(runFileFolder + idleFile):
@@ -161,6 +163,14 @@ if __name__ == '__main__':
 
     while os.path.isfile(runFileFolder+idleFile) and not os.path.isfile(runFileFolder + killFile):
         if os.path.isfile(runFileFolder+activelyRunFile) and not os.path.isfile(runFileFolder+killFile)  and not os.path.isfile(runFileFolder+forceIdleFile):
+            v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
+            m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
+            vvdt = Validator()
+            v.validate(vvdt)
+            mvdt = Validator()
+            m.validate(mvdt)
+            c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
+            airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
             updateStatus('starting')
             if os.path.isfile(runFileFolder+inUseFile):
                 numworkers = multiprocessing.cpu_count() - 1

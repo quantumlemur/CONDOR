@@ -32,10 +32,10 @@ class SizedVehicle:
         GWmin = v['Simulation']['GWMin']
         GWmax = v['Simulation']['GWmax']
         viableCandidate = False
-        GW = (GWmax - GWmin) / 2 + GWmin
+        GW = (GWmax + GWmin) / 2
         choppah = Vehicle(v, m, GW, self.airfoildata) # http://www.youtube.com/watch?v=Xs_OacEq2Sk
         choppah.flyMission()
-        while not (GWmax-GWmin<choppah.vconfig['Simulation']['GWTolerance']) and steps<choppah.vconfig['Simulation']['MaxSteps']:
+        while steps<choppah.vconfig['Simulation']['MaxSteps'] and (GWmax-GWmin)>choppah.vconfig['Simulation']['GWTolerance']:
             # Depending on whether we're oversized or undersized for the mission, adjust our GW limits accordingly
             if choppah.misSize < 0: # lower the max if we're either too heavy to trim or if we're trimmed but oversized for the mission
                 # here we are undersized and trimmable, and will increase the GW minimum
@@ -84,14 +84,17 @@ if __name__ == '__main__':
     from time import clock
     from configobj import ConfigObj
     from validate import Validator
-    startTime = clock()
+    import numpy as np
     v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
     m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
     v.validate(vvdt)
     mvdt = Validator()
     m.validate(mvdt)
-    blah = SizedVehicle(v, m)
+    startTime = clock()
+    c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
+    airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+    blah = SizedVehicle(v, m, airfoildata)
     veh = blah.sizeMission()
     stopTime = clock()
     elapsed = stopTime - startTime
