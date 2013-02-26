@@ -11,8 +11,8 @@ from configobj import ConfigObj
 from validate import Validator
 
 
-inputs = (('Main Rotor', 'NumRotors'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'DiskLoading'), ('Main Rotor', 'Solidity'), ('Main Rotor', 'TipSpeed'))
-inputRanges = ((1, 2), (0, 1), (2., 30.), (.05, .15), (400., 800.))
+inputs = (('Main Rotor', 'NumRotors'), ('Aux Propulsion', 'NumAuxProps'), ('Wing', 'SpanRadiusRatio'), ('Main Rotor', 'DiskLoading'), ('Main Rotor', 'Solidity'), ('Main Rotor', 'TipSpeed'))
+inputRanges = ((1, 2), (0, 1), (0., 4.), (2., 30.), (.05, .15), (400., 800.))
 
 missionInputs = (('Segment 2', 'Distance'), ('Segment 2', 'Speed'))
 missionInputRanges = ((300., 1000.), (100., 250.))

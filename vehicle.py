@@ -149,7 +149,7 @@ class Vehicle:
             speed = speeds[-1] + v['Simulation']['PowerCurveResolution']
             v['Condition']['Speed'] = speed
             v['Condition']['Density'] = self.density(0) # SL
-            powersSL.append(float('nan')) #self.powerReq()) # float('nan')
+            powersSL.append(self.powerReq()) # float('nan')
             powersCruise.append(float('nan'))
             speeds.append(speed)
         # Find cruise hover power and start out the array
