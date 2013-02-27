@@ -28,7 +28,7 @@ UsefulLoad = float()
 
 [Wing]
 SpanRadiusRatio = float()
-WingAspectRatio = float()
+WingChord = float()
 MaxSpeed = float()
 WingClMax = float()
 WingCD0 = float()

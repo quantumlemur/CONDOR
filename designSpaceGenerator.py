@@ -11,11 +11,11 @@ from configobj import ConfigObj
 from validate import Validator
 
 
-inputs = (('Main Rotor', 'NumRotors'), ('Aux Propulsion', 'NumAuxProps'), ('Wing', 'SpanRadiusRatio'), ('Main Rotor', 'DiskLoading'), ('Main Rotor', 'Solidity'), ('Main Rotor', 'TipSpeed'))
-inputRanges = ((1, 2), (0, 1), (0., 4.), (2., 30.), (.05, .15), (400., 800.))
+inputs = (('Aux Propulsion', 'NumAuxProps'), ('Wing', 'SpanRadiusRatio'), ('Main Rotor', 'DiskLoading'), ('Main Rotor', 'Solidity'), ('Main Rotor', 'TipSpeed'))
+inputRanges = ((1, 1), (0., 4.), (2., 30.), (.05, .15), (400., 800.))
 
 missionInputs = (('Segment 2', 'Distance'), ('Segment 2', 'Speed'))
-missionInputRanges = ((300., 1000.), (100., 250.))
+missionInputRanges = ((300., 1000.), (150., 300.))
 
 
 if os.getcwd().split(os.sep)[-1] == 'CONDOR':

@@ -32,8 +32,8 @@ sweeplimits = [[100, 250], [300, 1000]] # speed, range
 baselineRange = 544.
 baselineSpeed = 153.
 
-figW = 8
-figH = 6
+figW = 5
+figH = 5
 figDPI = 100
 inline_spacing = 5
 contourfontsize = 8
@@ -60,23 +60,23 @@ GWtickhighpadding = 4000
 MRPtickspacing = 250
 tickresolution = 1000
 
-displayPlots = True
+displayPlots = False
 saveData = True
 saveFigures = True
 annotatePlots = True
 
 generateNewBaseline = True
 
-plotScalingPlots = False
-plotPerformanceCurve = False
+plotScalingPlots = True
+plotPerformanceCurve = True
 
 plotRangeSpeedContour = True
-plotWeightImprovements = False
-plotDragImprovements = False
-plotSFCImprovements = False
-plotAllImprovements = False
-plotSweepContours = [] #['Solidity', 'DiskLoading', 'TipSpeed', 'SpanRadiusRatio']
-plotExtraContours = False
+plotWeightImprovements = True
+plotDragImprovements = True
+plotSFCImprovements = True
+plotAllImprovements = True
+plotSweepContours = ['Solidity', 'DiskLoading', 'TipSpeed', 'SpanRadiusRatio']
+plotExtraContours = True
 
 
 vconfig = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
@@ -249,7 +249,6 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
     tic = clock()
     outstandingTasks = 0
     # queue tasks
-    print('starting putting tasks')
     for i in xrange(GW.shape[0]):
         for j in xrange(GW.shape[1]):
             m = ConfigObj(mconfig)
@@ -262,7 +261,6 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
             tasks.put(Task(i, j, 0, v, m, airfoildata))
             outstandingTasks += 1
     # collect results back
-    print('all tasks put')
     for num in xrange(outstandingTasks):
         showProgress('%s - %s' % (sys._getframe().f_code.co_name, filename), tic, clock(), num, outstandingTasks)
         (pos, vc) = results.get()
@@ -481,6 +479,7 @@ def PerformanceCurve():
     MCPalt = [3104, 3104]
     plt.plot(MCPspeeds, MCPSL, 'b')
     plt.plot(MCPspeeds, MCPalt, 'g')
+    plt.axis([0, 200, 1000, 6000])
     plt.legend(('Sea Level', '14k ft'), fontsize=labelfontsize)
     plt.tick_params(labelsize=axislabelfontsize)
     plt.xlabel('Airspeed (kts)', fontsize=labelfontsize)
@@ -746,29 +745,19 @@ if __name__ == '__main__':
         w.start()
 
     #blah = SizedVehicle(v, m)
-    print(tasks.qsize())
     if generateNewBaseline:
         baseline = GenerateBaselineData()
         np.save('Output/baseline.npy', baseline)
     else:
         baseline = np.load('Output/baseline.npy')
-    print(tasks.qsize())
     if plotScalingPlots: ScalingPlots()
-    print(tasks.qsize())
     if plotPerformanceCurve: PerformanceCurve()
-    print(tasks.qsize())
     if plotRangeSpeedContour: RangeSpeedContour(baseline)
-    print(tasks.qsize())
     if plotWeightImprovements: RangeSpeedContour(baseline, 'WeightImprovements', ['Weights', 'Weights', 'Weights', 'Weights'], ['StructureWeightTechImprovementFactor', 'WingWeightTechImprovementFactor', 'EngineWeightTechImprovmentFactor', 'DriveSystemWeightTechImprovementFactor'], [.13, .05, .04, .13])
-    print(tasks.qsize())
     if plotDragImprovements: RangeSpeedContour(baseline, 'DragImprovements', ['Body'], ['DragTechImprovementFactor'], [.23])
-    print(tasks.qsize())
     if plotSFCImprovements: RangeSpeedContour(baseline, 'SFCImprovements', ['Powerplant'], ['SFCTechImprovementFactor'], [.205])
-    print(tasks.qsize())
     if plotAllImprovements: RangeSpeedContour(baseline, 'AllImprovements', ['Weights', 'Weights', 'Weights', 'Weights', 'Body', 'Powerplant'], ['StructureWeightTechImprovementFactor', 'WingWeightTechImprovementFactor', 'EngineWeightTechImprovmentFactor', 'DriveSystemWeightTechImprovementFactor', 'DragTechImprovementFactor', 'SFCTechImprovementFactor'], [.13, .05, .04, .13, .23, .205])
-    print(tasks.qsize())
     SweepContours(baseline)
-    print(tasks.qsize())
 
     # shut down the workers
     for i in xrange(numworkers):

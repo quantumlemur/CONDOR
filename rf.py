@@ -49,15 +49,19 @@ class SizedVehicle:
             choppah = Vehicle(v, m, GW, self.airfoildata)
             choppah.flyMission()
             steps += 1
+            if math.isnan(choppah.misSize) and choppah.vconfig['Weights']['MaxAvailableFuelWeight']<0:
+                break
             if debug:
                 couldTrim = choppah.vconfig['Sizing Results']['CouldTrim']
                 couldMission = choppah.misSize > 0
-                ms = 0 if math.isnan(choppah.misSize) else choppah.misSize
+                ms = 99999999999999 if math.isnan(choppah.misSize) else choppah.misSize
                 pvar(locals(), ('steps', 'GWmax', 'GW', 'GWmin', 'couldTrim', 'couldMission', 'ms', 'viableCandidate'))
         stopReason = ''
         goodRun = False
         if not viableCandidate:
             stopReason = 'Cound not trim at all conditions at any mission-capable weight'
+        elif choppah.vconfig['Weights']['MaxAvailableFuelWeight'] < 0:
+            stopReason = 'Negative calculated max fuel weight'
         elif steps >= choppah.vconfig['Simulation']['MaxSteps']:
             stopReason = 'MaxSteps reached before convergance.  Stopped with bounds: %f  to  %f' % (GWmin, GWmax)
         elif (GWmax-GWmin <= choppah.vconfig['Simulation']['GWTolerance']) and choppah.vconfig['Sizing Results']['CouldTrim']:

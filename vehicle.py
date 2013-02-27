@@ -34,6 +34,8 @@ class Vehicle:
         v['Performance']['IngressSpeed'] = m['Segment 2']['Speed']
         v['Performance']['MissionRange'] = m['Segment 2']['Distance']
 
+        v['Performance']['MaxBladeLoadingSeen'] = 0.
+
 
         v['Body']['FlatPlateDrag'] = 0.25 * GW**.5 * (1-v['Body']['DragTechImprovementFactor']) #0.015 * GW**0.67 # flat plate drag area
         v['Main Rotor']['Radius'] = math.sqrt(GW / (math.pi * v['Main Rotor']['DiskLoading'] * v['Main Rotor']['NumRotors']))
@@ -41,7 +43,8 @@ class Vehicle:
         v['Main Rotor']['DiskArea'] = math.pi * v['Main Rotor']['Radius']**2 * v['Main Rotor']['NumRotors']
         v['Main Rotor']['AverageChord'] = v['Main Rotor']['DiskArea']*v['Main Rotor']['Solidity'] / (v['Main Rotor']['Radius']*(1-v['Main Rotor']['RootCutout'])*v['Main Rotor']['NumBlades'])
         v['Wing']['WingSpan'] = v['Main Rotor']['Radius'] * v['Wing']['SpanRadiusRatio']
-        v['Wing']['WingArea'] = v['Wing']['WingSpan']**2 / v['Wing']['WingAspectRatio']
+        v['Wing']['WingArea'] = v['Wing']['WingSpan'] * v['Wing']['WingChord']
+        v['Wing']['WingAspectRatio'] = v['Wing']['WingSpan'] / v['Wing']['WingChord']
         
         v['Weights']['EmptyWeight'] = GW * v['Weights']['BaselineEmptyWeightFraction']
         v['Sizing Results']['GrossWeight'] = GW
@@ -55,9 +58,6 @@ class Vehicle:
             v['Powerplant']['TransmissionEfficiency'] = .08
             v['Weights']['BaselineEmptyWeightFraction'] = v['Weights']['BaselineEmptyWeightFraction'] * 1.05
             v['Body']['FlatPlateDrag'] = v['Body']['FlatPlateDrag'] * 1.1
-        if v['Aux Propulsion']['NumAuxProps'] > 0:
-            v['Weights']['BaselineEmptyWeightFraction'] = v['Weights']['BaselineEmptyWeightFraction'] * 1.05
-        v['Body']['DownwashFactor'] = 0.07 + min(v['Wing']['SpanRadiusRatio'],2.)/100
 
         
         self.blade = Blade(airfoildata=self.airfoildata, skip_header=0, skip_footer=0, averageChord=v['Main Rotor']['AverageChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
@@ -94,7 +94,7 @@ class Vehicle:
             scaledDriveSystemWeight = 999999999.
             print scaledDriveSystemWeight
             print MCP
-        scaledWingWeight = 0.00272*self.GW**1.4/v['Main Rotor']['DiskLoading']**0.8*v['Wing']['SpanRadiusRatio']**0.8
+        scaledWingWeight = 0.00272*self.GW**1.4/v['Main Rotor']['DiskLoading']**0.8*v['Wing']['SpanRadiusRatio']**0.8 * 0.8
         scaledStructureWeight = improvedStructureWeightFraction * self.GW
         
         v['Weights']['scaledEngineWeight'] = scaledEngineWeight * (1-v['Weights']['EngineWeightTechImprovementFactor'])
@@ -105,6 +105,7 @@ class Vehicle:
         # output
         v['Weights']['EmptyWeightFraction'] = (scaledEngineWeight + scaledDriveSystemWeight + scaledWingWeight + scaledStructureWeight) / self.GW
         v['Weights']['EmptyWeight'] = v['Weights']['EmptyWeightFraction'] * self.GW
+        v['Weights']['MaxAvailableFuelWeight'] = self.GW - v['Weights']['EmptyWeight'] - v['Weights']['UsefulLoad']
     
     def setMission(self, mconfig):
         """This function sets the mission and analyzes all the mission segments, fleshing them out with some calculated values"""
@@ -227,9 +228,8 @@ class Vehicle:
                 POWERmaxr = powers[i]
         if debug:  print speeds
         if debug:  print powers
-        fuelweight = self.GW - (v['Weights']['EmptyWeightFraction']*self.GW + v['Weights']['UsefulLoad'])
+        fuelweight = self.GW - v['Weights']['EmptyWeightFraction']*self.GW - v['Weights']['UsefulLoad']
         hourstoempty = fuelweight / (self.SFC(POWERmaxr) * POWERmaxr)
-        v['Weights']['MaxAvailableFuelWeight'] = fuelweight
         v['Performance']['MaxRange'] = hourstoempty * SPEEDmaxr
         v['Performance']['MaxRangeSpeed'] = SPEEDmaxr
         v['Performance']['PowerAtMaxRangeSpeed'] = POWERmaxr
@@ -300,7 +300,7 @@ class Vehicle:
         m = self.mconfig
         v = self.vconfig
         v['Sizing Results']['MisSize'] = float('nan')
-        if not v['Sizing Results']['CouldTrim']:
+        if v['Weights']['EmptyWeightFraction']>1 or v['Weights']['MaxAvailableFuelWeight']<0 or not v['Sizing Results']['CouldTrim'] :
             return
         elapsed = 0 # elapsed time since mission start
         fuelAvailable = self.GW - v['Weights']['EmptyWeight'] - v['Weights']['UsefulLoad'] # total fuel weight available, pounds
@@ -363,6 +363,7 @@ class Vehicle:
             WingCl = 0.
             WingCd = 0.
         WingDrag = .5 * WingCd * v['Wing']['WingArea'] * Density * V**2
+        WingDrag = 0.
 
         # proportion out forward thrust between the aux prop and the rotors
         BodyDrag = .5 * Density * V**2 * v['Body']['FlatPlateDrag']
@@ -376,6 +377,7 @@ class Vehicle:
             ForwardThrust_perAuxprop = 0.
         ForwardThrust_rotors = ForwardThrust - ForwardThrust_auxprops
         ForwardThrust_perRotor = ForwardThrust_rotors / v['Main Rotor']['NumRotors']
+        if debug: pvar(locals(), ('ForwardThrust_perRotor', 'VerticalLift_perRotor', 'VerticalLift_wing'))
 
         # calculate rotor power
         singleRotorPower = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perRotor, Fz=VerticalLift_perRotor, maxSteps=v['Simulation']['MaxSteps'])
@@ -387,6 +389,8 @@ class Vehicle:
         # find total power
         totalPower = singleRotorPower*v['Main Rotor']['NumRotors'] + singlePropPower*v['Aux Propulsion']['NumAuxProps'] + TotalDrag*V/550 # Is this right?  should the parasite power be just added on directly like this?
         totalPower = totalPower / (1-v['Antitorque']['AntitorquePowerFactor']) / (1-v['Powerplant']['TransmissionEfficiency'])
+
+        v['Performance']['MaxBladeLoadingSeen'] = max(v['Performance']['MaxBladeLoadingSeen'], math.sqrt(ForwardThrust_perRotor**2+VerticalLift_perRotor**2)/(Density*v['Main Rotor']['DiskArea']*v['Main Rotor']['TipSpeed']**2))
 
         return totalPower
         
