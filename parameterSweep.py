@@ -27,18 +27,20 @@ TipSpeedrange = [400, 800]
 GWrange = [15000, 45000]
 
 
-numPerParam = 10
+numPerParam = 30
 sweeplimits = [[100, 250], [300, 1000]] # speed, range
 baselineRange = 544.
 baselineSpeed = 153.
 
-figW = 5
-figH = 5
-figDPI = 100
+singlefigW = 3.4
+singlefigH = 2.5
+doublefigW = 7.5
+doublefigH = 6
+figDPI = 600
 inline_spacing = 5
-contourfontsize = 8
-titlefontsize = 12
-labelfontsize = 10
+contourfontsize = 6
+titlefontsize = 10
+labelfontsize = 8
 labelboxcolor = 'gray'
 labeltextcolor = ''
 labelalpha = .8
@@ -51,9 +53,9 @@ badcolor = '#bb1111'
 badmarker = 'ro'
 goodcolor = '#22ee22'
 goodmarker = 'go'
-pointmarkersize = 10
-pointfontsize = 12
-axislabelfontsize = 10
+pointmarkersize = 8
+pointfontsize = 8
+axislabelfontsize = 8
 GWtickspacing = 4000
 GWticklowpadding = 4000
 GWtickhighpadding = 4000
@@ -67,15 +69,15 @@ annotatePlots = True
 
 generateNewBaseline = True
 
-plotScalingPlots = True
+plotScalingPlots = False
 plotPerformanceCurve = True
 
 plotRangeSpeedContour = True
-plotWeightImprovements = True
-plotDragImprovements = True
-plotSFCImprovements = True
-plotAllImprovements = True
-plotSweepContours = ['Solidity', 'DiskLoading', 'TipSpeed', 'SpanRadiusRatio']
+plotWeightImprovements = False
+plotDragImprovements = False
+plotSFCImprovements = False
+plotAllImprovements = False
+plotSweepContours = ['SpanRadiusRatio']#['Solidity', 'DiskLoading', 'TipSpeed', 'SpanRadiusRatio']
 plotExtraContours = True
 
 
@@ -119,11 +121,14 @@ class Task(object):
         mconfig = self.mconfig
         vehicle = SizedVehicle(vconfig, mconfig, self.airfoildata)
         sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object
-        #sizedVehicle.generatePowerCurve()
-        sizedVehicle.findHoverCeiling()
-        #sizedVehicle.findMaxRange()
-        #sizedVehicle.findMaxSpeed()
-        v = sizedVehicle.vconfig
+        if sizedVehicle:
+            #sizedVehicle.generatePowerCurve()
+            sizedVehicle.findHoverCeiling()
+            #sizedVehicle.findMaxRange()
+            #sizedVehicle.findMaxSpeed()
+            v = sizedVehicle.vconfig
+        else:
+            v = False
         return ((self.i, self.j, self.k), v)
 
 # def sweep(vehicle, num):
@@ -204,7 +209,7 @@ def GenerateBaselineData():
         m['Segment 2']['Speed'] = (float) (SPEED[i][j])
         v['Wing']['MaxSpeed'] = (float) (SPEED[i][j])
         (pos, vc) = results.get()
-        GW[pos[0]][pos[1]] = vc['Sizing Results']['SizedGrossWeight'] if vc['Sizing Results']['GoodRun'] else float('nan')
+        GW[pos[0]][pos[1]] = vc['Sizing Results']['SizedGrossWeight'] if vc else float('nan')
             #MCP[i][j] = v['Powerplant']['MCP']
     print('')
     #GW[~np.isfinite(GW)] = 0
@@ -224,6 +229,7 @@ def GenerateBaselineData():
     v['Wing']['MaxSpeed'] = baselineSpeed
     vehicle = SizedVehicle(v, m, airfoildata)
     vehicle = vehicle.sizeMission()
+    vehicle.write()
     baselineGW = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
     
     return (SPEED, RANGE, GW, GWN, baselineGW)
@@ -247,26 +253,29 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
     
     num = output.shape[0]
     tic = clock()
-    outstandingTasks = 0
-    # queue tasks
-    for i in xrange(GW.shape[0]):
-        for j in xrange(GW.shape[1]):
-            m = ConfigObj(mconfig)
-            v = ConfigObj(vconfig)
-            m['Segment 2']['Distance'] = (float) (RANGE[i][j])
-            m['Segment 2']['Speed'] = (float) (SPEED[i][j])
-            v['Wing']['MaxSpeed'] = (float) (SPEED[i][j])
-            for k in xrange(len(section)):
-                v[section[k]][var[k]] = value[k]
-            tasks.put(Task(i, j, 0, v, m, airfoildata))
-            outstandingTasks += 1
-    # collect results back
-    for num in xrange(outstandingTasks):
-        showProgress('%s - %s' % (sys._getframe().f_code.co_name, filename), tic, clock(), num, outstandingTasks)
-        (pos, vc) = results.get()
-        GW[pos[0]][pos[1]] = vc['Sizing Results']['SizedGrossWeight'] if vc['Sizing Results']['GoodRun'] else float('nan')
-        #MCP[i][j] = v['Powerplant']['MCP']
-    print('')
+    if filename == 'Baseline':
+        GW = baseline[2]
+    else:
+        outstandingTasks = 0
+        # queue tasks
+        for i in xrange(GW.shape[0]):
+            for j in xrange(GW.shape[1]):
+                m = ConfigObj(mconfig)
+                v = ConfigObj(vconfig)
+                m['Segment 2']['Distance'] = (float) (RANGE[i][j])
+                m['Segment 2']['Speed'] = (float) (SPEED[i][j])
+                v['Wing']['MaxSpeed'] = (float) (SPEED[i][j])
+                for k in xrange(len(section)):
+                    v[section[k]][var[k]] = value[k]
+                tasks.put(Task(i, j, 0, v, m, airfoildata))
+                outstandingTasks += 1
+        # collect results back
+        for num in xrange(outstandingTasks):
+            showProgress('%s - %s' % (sys._getframe().f_code.co_name, filename), tic, clock(), num, outstandingTasks)
+            (pos, vc) = results.get()
+            GW[pos[0]][pos[1]] = vc['Sizing Results']['SizedGrossWeight'] if vc else float('nan')
+            #MCP[i][j] = v['Powerplant']['MCP']
+        print('')
     # filter data
     # SPEED = scipy.ndimage.zoom(SPEED, 3)
     # RANGE = scipy.ndimage.zoom(RANGE, 3)
@@ -276,7 +285,7 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
     GWN = baseline[3]
 
     #MRPN = np.linspace(MRP.min(), MRP.max(), num=1000)
-    plt.figure(num=None, figsize=(figW, figH), dpi=figDPI, facecolor='w', edgecolor='k')
+    plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
     
     plot = plt.subplot(1, 1, 1)
     plot.tick_params(labelsize=axislabelfontsize)
@@ -331,7 +340,7 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
     #plt.grid(True)
     
     plt.tight_layout()
-    if saveFigures: pylab.savefig('Output/Figures/%sContour.png' % filename, bbox_inches=0)
+    if saveFigures: pylab.savefig('Output/Figures/%sContour.png' % filename, bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
     if saveData: np.savez('Output/Data/%sContourData' % filename, SPEED=SPEED, RANGE=RANGE, GW=GW, GWN=GWN)
 
@@ -398,9 +407,9 @@ def SweepContours(baseline):
         for num in xrange(outstandingTasks):
             if i>0: showProgress('%s - %s' % (sys._getframe().f_code.co_name, sweepVar), tic, clock(), num, outstandingTasks)
             (pos, vc) = results.get()
-            GW[pos[2]][pos[0]][pos[1]] = vc['Sizing Results']['SizedGrossWeight'] if vc['Sizing Results']['GoodRun'] else float('nan')
-            MCP[pos[2]][pos[0]][pos[1]] = vc['Powerplant']['MCP'] if vc['Sizing Results']['GoodRun'] else float('nan')
-            extraContours[pos[2]][pos[0]][pos[1]] = vc['Performance'][extraContour] if vc['Sizing Results']['GoodRun'] else float('nan')
+            GW[pos[2]][pos[0]][pos[1]] = vc['Sizing Results']['SizedGrossWeight'] if vc else float('nan')
+            MCP[pos[2]][pos[0]][pos[1]] = vc['Powerplant']['MCP'] if vc else float('nan')
+            extraContours[pos[2]][pos[0]][pos[1]] = vc['Performance'][extraContour] if vc else float('nan')
             # smoothedGW[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
             # smoothedMCP[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
 
@@ -413,7 +422,7 @@ def SweepContours(baseline):
         # extraContours = scipy.ndimage.zoom(extraContours, 3)
 
         GWN = baseline[3]
-        plt.figure(num=None, figsize=(figW, figH), dpi=figDPI, facecolor='w', edgecolor='k')
+        plt.figure(num=None, figsize=(doublefigW, doublefigH), dpi=figDPI, facecolor='w', edgecolor='k')
         
         for DLi in xrange(len(Spread)):
             plot = plt.subplot(2, 2, DLi+1)
@@ -460,7 +469,7 @@ def SweepContours(baseline):
                 print GWN
         plt.tight_layout()
         if plotExtraContours: sweepVar = '%sExtra' % sweepVar
-        if saveFigures: pylab.savefig('Output/Figures/%sGWContour.png' % sweepVar, bbox_inches=0)
+        if saveFigures: pylab.savefig('Output/Figures/%sGWContour.png' % sweepVar, bbox_inches=0, dpi=figDPI)
         if displayPlots: plt.show()
         if saveData: np.savez('Output/Data/%sContourData' % sweepVar, SPEED=SPEED, RANGE=RANGE, GW=GW, GWN=GWN)
 
@@ -469,9 +478,9 @@ def PerformanceCurve():
     m = ConfigObj(mconfig)
     choppah = Vehicle(v, m, 25000, airfoildata)
     choppah.generatePowerCurve()
-    choppah.write()
+    #choppah.write()
     
-    plt.figure(num=None, figsize=(figW/1.5, figH/1.5), dpi=figDPI, facecolor='w', edgecolor='k')
+    plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
     plt.plot(choppah.vconfig['Power Curve']['Speeds'], choppah.vconfig['Power Curve']['PowersSL'])
     plt.plot(choppah.vconfig['Power Curve']['Speeds'], choppah.vconfig['Power Curve']['PowersCruise'])
     MCPspeeds = [0, 200]
@@ -487,7 +496,7 @@ def PerformanceCurve():
     plt.title('Predicted S-92 Power Curve', fontsize=titlefontsize)
     plt.grid(True)
     
-    if saveFigures: pylab.savefig('Output/Figures/S92PerformanceCurve.png', bbox_inches=0)
+    if saveFigures: pylab.savefig('Output/Figures/S92PerformanceCurve.png', bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
 
     
@@ -496,7 +505,7 @@ def PerformanceCurve():
 
 def ScalingPlots():
     # flat plate drag area
-    plt.figure(num=None, figsize=(figW/1.2, figH/1.2), dpi=figDPI, facecolor='w', edgecolor='k')
+    plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
     dragGW = np.arange(0, 40000, 100)
     flatplatedrag = 0.25 * dragGW**.5
     heliDrags = np.array([15, 21, 22.5, 37, 32, 38, 41, 43, 56, 40])
@@ -511,11 +520,11 @@ def ScalingPlots():
     plt.ylabel('Flat Plate Drag Area (sq ft)', fontsize=labelfontsize)
     plt.title('Flat Plate Drag Scaling', fontsize=titlefontsize)
     plt.tight_layout()
-    if saveFigures: pylab.savefig('Output/Figures/flatPlateDragScaling.png', bbox_inches=0)
+    if saveFigures: pylab.savefig('Output/Figures/flatPlateDragScaling.png', bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
     
     # engine weight
-    plt.figure(num=None, figsize=(figW, figH), dpi=figDPI, facecolor='w', edgecolor='k')
+    plt.figure(num=None, figsize=(doublefigW, doublefigH), dpi=figDPI, facecolor='w', edgecolor='k')
     plt.subplot(2, 2, 1)
     MCP = np.arange(0, 4000, 10)
     weight = ((0.1054*(MCP)**2+358*(MCP)+2.757*10**4)/((MCP)+1180))
@@ -578,7 +587,7 @@ def ScalingPlots():
     plt.tight_layout()
 
     if displayPlots: plt.show()
-    if saveFigures: pylab.savefig('Output/Figures/WeightsAndSFCScaling.png', bbox_inches=0)
+    if saveFigures: pylab.savefig('Output/Figures/WeightsAndSFCScaling.png', bbox_inches=0, dpi=figDPI)
 
 
 # def SolidityContour(vconfig, mconfig, num, baseline):

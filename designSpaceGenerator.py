@@ -85,19 +85,19 @@ class Task(object):
                 val = random.uniform(missionInputRanges[i][0], missionInputRanges[i][1])
             mconfig[missionInputs[i][0]][missionInputs[i][1]] = val
         vehicle = SizedVehicle(vconfig, mconfig, self.airfoildata)
-        sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object
-        sizedVehicle.generatePowerCurve()
-        sizedVehicle.findHoverCeiling()
-        sizedVehicle.findMaxRange()
-        sizedVehicle.findMaxSpeed()
-        v = sizedVehicle.vconfig
-        flatdict = {}
-        def flatten(section, key):
-            if section.name not in ['Condition', 'Trim Failure', 'Simulation']:
-                flatdict[key] = section[key]
-        v.walk(flatten)
-        flatdict['COMPUTERNAME'] = computerName
-        if flatdict['GoodRun']:
+        sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object, or False if it wasn't able to converge properly.
+        if sizedVehicle:
+            sizedVehicle.generatePowerCurve()
+            sizedVehicle.findHoverCeiling()
+            sizedVehicle.findMaxRange()
+            sizedVehicle.findMaxSpeed()
+            v = sizedVehicle.vconfig
+            flatdict = {}
+            def flatten(section, key):
+                if section.name not in ['Condition', 'Trim Failure', 'Simulation']:
+                    flatdict[key] = section[key]
+            v.walk(flatten)
+            flatdict['COMPUTERNAME'] = computerName
             return flatdict
         else:
             return None
@@ -144,8 +144,6 @@ def updateStatus(state, goodRows=0, totalRows=0, outstandingTasks=1):
     if updateElapsedTime>minRunFileUpdateTime or state=='quit':
         if os.path.isfile(runFile): os.remove(runFile)
         runFile = '%s%s %s' % (runFileFolder, computerName, status)
-        if state != 'quit':
-            runFile = '%s        %s' % (runFile, time.strftime("%H.%M.%S", time.localtime()))
         with open(runFile, 'w') as f: f.write('blah')
         lastRunFileUpdateTime = time.time()
 

@@ -215,15 +215,16 @@ class Rotor:
         mu = V / Vtip
         lockNumber = 8. # assumed estimate
         alpha_TPP = math.tan(Fx/Fz) # tip path plane angle
+        totalThrust = math.sqrt(Fx**2 + Fz**2)
 
         if debug: pvar(locals(), ('V', 'Fx', 'Fz'))
 
-        dtheta_0_multiplier = math.sqrt(Fz**2 + Fx**2) / 10000000
+        dtheta_0_multiplier = math.sqrt(Fz**2 + Fx**2) / 1000000
         dtheta_0_multiplier = min(dtheta_0_multiplier, 0.1)
         dtheta_0_multiplier = max(dtheta_0_multiplier, 0.0001)
 
         # First we'll check if the pre-existing trim solution is reasonable. If not, re-initialize them.
-        if (self.beta_0<0) or (self.beta_0>math.pi/4) or (abs(self.theta_1c)>math.pi/4) or (abs(self.theta_1s)>math.pi/4) or math.isnan(self.power):
+        if (self.beta_0<0) or (self.beta_0>math.pi/6) or (abs(self.theta_1c)>math.pi/6) or (abs(self.theta_1s)>math.pi/6) or math.isnan(self.power):
             self.reinitializeTrimVars()
         inflow = self.calcInflow(Fx=Fx, Fz=Fz, rho=rho, V=V, maxSteps=maxSteps)
         beta_0 = self.beta_0
@@ -234,10 +235,14 @@ class Rotor:
         pitch = 999
         L = 0
         P = 1
+        T = 0
         lastP = 0
         steps = 0
+        CChanges = []
+        TChanges = []
         tol = tolerancePct / 100
-        while np.isfinite(P) and steps<maxSteps and abs(theta_0)<math.pi/4 and not (abs(Fz-L)/Fz<tol and abs(lastP-P)/P<tol) and abs(P)<40000:
+        liftDeficitPct = 9
+        while np.isfinite(P) and steps<maxSteps and abs(theta_0)<math.pi/6 and not (abs(liftDeficitPct)<tol and abs(lastP-P)/P<tol) and abs(P)<40000:
             steps += 1
             #### These following equations are from slides ~70-80 in Part2.ppt of AE6070 notes.  All angles relative to flight path?
             # find the effective blade section angle of attack
@@ -268,6 +273,7 @@ class Rotor:
             dDinduced = dL*sinphi * dr * dpsi / (2*math.pi)
             dDprofile = dD*cosphi * dr * dpsi / (2*math.pi)
             # Integrate over the rotor surface
+            lastT = T
             T = np.sum(dT) * numblades
             Pinduced = np.sum(dDinduced * U_T) * numblades / 550
             Pprofile = np.sum(dDprofile * U_T) * numblades / 550
@@ -281,25 +287,38 @@ class Rotor:
             theta_1s += roll
             # Find vertical lift and adjust collective
             L = T * math.cos(alpha_TPP)
-            liftDeficitPct = (Fz - L) / Fz
+            liftDeficitPct = (totalThrust - T) / totalThrust
             dtheta_0 = liftDeficitPct * dtheta_0_multiplier
             # cap the max change at 0.1
-            if abs(dtheta_0) > 0.1:
-                dtheta_0 /= abs(dtheta_0 * 10)
+            #if abs(dtheta_0) > 0.1:
+            #    dtheta_0 /= abs(dtheta_0 / 0.1)
+            # and minimum at 0.001
+            #if abs(dtheta_0) < 0.0000001:
+            #    dtheta_0 /= abs(dtheta_0 / 0.0000001)
+            CChanges.append(dtheta_0 > 0) # true if theta is going up
+            TChanges.append(T-lastT > 0) # true if thrust is going up
+            if len(CChanges) > 200:
+                if (all(CChanges) and not any(TChanges)) or (not any(CChanges) and all(TChanges)): # collective has been going up always and thrust has never been going up, or vice versa
+                    if debug: print('Consistently wrong direction of change!')
+                    P = float('nan') # this is the easiest way to break the loop...
+                CChanges.pop(0)
+                TChanges.pop(0)
             theta_0 += dtheta_0            
             if debug: 
                 coll = theta_0 * 180/math.pi
                 b0 = beta_0 * 180/math.pi
                 t1s = theta_1s * 180/math.pi
                 t1c = theta_1c * 180/math.pi
-                pvar(locals(), ('steps', 'Fx', 'Fz', 'T', 'coll', 'b0', 't1c', 't1s', 'Pinduced', 'Pprofile', 'P'))
+                total = math.sqrt(Fx**2 + Fz**2)
+                dthet = dtheta_0 * 1000
+                pvar(locals(), ('V', 'steps', 'total', 'T', 'dthet', 'coll', 'b0', 't1c', 't1s', 'Pinduced', 'Pprofile', 'P'))
         self.inflow = inflow
         self.theta_0 = theta_0
         self.theta_1c = theta_1c
         self.theta_1s = theta_1s
         self.beta_0 = beta_0
 
-        if abs(Fz-L)/Fz<tol and abs(lastP-P)/lastP<tol and abs(theta_0)<math.pi/4 and abs(P)<40000:
+        if abs(liftDeficitPct)<tol and abs(lastP-P)/lastP<tol and abs(theta_0)<math.pi/6 and abs(P)<40000:
             P_total = Pinduced + Pprofile
         else:
             if debug: print('%s < %s       %s < %s' % (abs(Fz-L)/Fz, tol, tol, tol))
@@ -386,7 +405,7 @@ if __name__ == '__main__':
     from configobj import ConfigObj
     from validate import Validator
     startTime = clock()
-    GW = 26000.
+    GW = 100000.
     v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
     m = ConfigObj('Config/mission.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
@@ -397,15 +416,20 @@ if __name__ == '__main__':
     f = 0.25 * GW**.5 * (1-v['Body']['DragTechImprovementFactor'])
     print f
     Vtip = v['Main Rotor']['TipSpeed'] # ft/s
-    R = v['Main Rotor']['Radius'] # feet
+    R = math.sqrt(GW / (math.pi * v['Main Rotor']['DiskLoading'] * v['Main Rotor']['NumRotors']))
+    v['Main Rotor']['Radius'] = R
+    v['Main Rotor']['DiskArea'] = math.pi * v['Main Rotor']['Radius']**2 * v['Main Rotor']['NumRotors']
+    v['Main Rotor']['AverageChord'] = v['Main Rotor']['DiskArea']*v['Main Rotor']['Solidity'] / (v['Main Rotor']['Radius']*(1-v['Main Rotor']['RootCutout'])*v['Main Rotor']['NumBlades'])
     omega = Vtip / R # rad/s
-    blade = Blade(c81File='Config/%s'%v['Main Rotor']['AirfoilFile'], skip_header=0, skip_footer=0, rootChord=v['Main Rotor']['RootChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout']/v['Main Rotor']['Radius'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
+    c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
+    airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+    blade = Blade(airfoildata=airfoildata, skip_header=0, skip_footer=0, averageChord=v['Main Rotor']['AverageChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout']/v['Main Rotor']['Radius'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
     rotor = Rotor(blade, psiSegments=v['Simulation']['numBladeElementSegments'], Vtip=v['Main Rotor']['TipSpeed'], radius=v['Main Rotor']['Radius'], numblades=v['Main Rotor']['NumBlades'])
     bladeArea = np.sum(blade.chord * rotor.radius * blade.dr * rotor.radius * rotor.numblades)
     diskArea = math.pi * rotor.radius**2
     solidity = bladeArea / diskArea
     pvar(locals(), ('bladeArea', 'diskArea', 'solidity'))
-    speeds = np.arange(0, 400, 5)
+    speeds = np.arange(0, 500, 5)
     Pi = np.zeros(speeds.size)
     Ppr = np.zeros(speeds.size)
     Ppa = np.zeros(speeds.size)
@@ -414,7 +438,7 @@ if __name__ == '__main__':
         V = speeds[i]
         print V
         Fhorizontal = 1./2 * rho * V**2 * f
-        Fvertical = 5122#26000. # pounds
+        Fvertical = GW # pounds
         P_tot[i] = rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=v['Simulation']['MaxSteps']) + Fhorizontal*V/550
     import matplotlib.pyplot as plt
     plt.figure()
@@ -422,12 +446,12 @@ if __name__ == '__main__':
     #plt.legend(('total', 'induced', 'profile', 'parasite'))
     plt.xlabel('speed (kts)')
     plt.ylabel('power (hp)')
+    stopTime = clock()
     plt.show()
     # V = 800.
     # mu = V/Vtip
     # Fhorizontal = .5 * rho * V**2 * f
     # Fvertical = GW # pounds
     # power =  rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=v['Simulation']['MaxSteps'])
-    stopTime = clock()
     elapsed = stopTime - startTime
-    if debug: pvar(locals(), ('power', 'elapsed'))
+    print('elapsed time: %d' % elapsed)

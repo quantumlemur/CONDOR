@@ -46,11 +46,12 @@ class Vehicle:
         v['Wing']['WingArea'] = v['Wing']['WingSpan'] * v['Wing']['WingChord']
         v['Wing']['WingAspectRatio'] = v['Wing']['WingSpan'] / v['Wing']['WingChord']
         
-        v['Weights']['EmptyWeight'] = GW * v['Weights']['BaselineEmptyWeightFraction']
+        #v['Weights']['EmptyWeight'] = GW * v['Weights']['BaselineEmptyWeightFraction']
         v['Sizing Results']['GrossWeight'] = GW
         v['Sizing Results']['CouldTrim'] = True
         v['Sizing Results']['MisSize'] = float('nan')
         v['Sizing Results']['Nothing'] = 0.
+        v['Performance']['Nothing'] = 0.
         
         # adjustments and tweaks based on configuration
         if v['Main Rotor']['NumRotors'] == 2:
@@ -252,18 +253,18 @@ class Vehicle:
     def scaleEngine(self):
         """Scales the engine for high hot hover and fast cruise."""
         v = self.vconfig
-        # altitude = v['Engine Scaling']['RequiredHoverHeight']
-        # v['Condition']['Weight'] = self.GW
-        # v['Condition']['Density'] = self.density(altitude)
-        # v['Condition']['Speed'] = 0 # hover
-        # hoverpower = self.powerReq()
-        # if math.isnan(hoverpower):
-        #     self.recordTrimFailure()
-        #     hoverpower = 1.
-        # v['Engine Scaling']['HoverPowerAtAlt'] = hoverpower
-        # hoverpower = hoverpower * self.density(0) / self.density(altitude) # scale engine to sea level
-        # v['Engine Scaling']['HoverPower'] = hoverpower
-        hoverpower = 1.
+        altitude = v['Engine Scaling']['RequiredHoverHeight']
+        v['Condition']['Weight'] = self.GW
+        v['Condition']['Density'] = self.density(altitude)
+        v['Condition']['Speed'] = 0 # hover
+        hoverpower = self.powerReq()
+        if math.isnan(hoverpower):
+            self.recordTrimFailure()
+            hoverpower = 1.
+        v['Engine Scaling']['HoverPowerAtAlt'] = hoverpower
+        hoverpower = hoverpower * self.density(0) / self.density(altitude) # scale engine to sea level
+        v['Engine Scaling']['HoverPower'] = hoverpower
+        # hoverpower = 1.
         
         # v['Condition']['Weight'] = self.GW
         # altitude = 13000.
@@ -280,7 +281,7 @@ class Vehicle:
         v['Condition']['Weight'] = self.GW
         altitude = v['Condition']['CruiseAltitude']
         v['Condition']['Density'] = self.density(altitude)
-        v['Condition']['Speed'] = v['Wing']['MaxSpeed'] # 2/3 of max speed
+        v['Condition']['Speed'] = v['Wing']['MaxSpeed']
         cruisepower = self.powerReq()
         if math.isnan(cruisepower):
             self.recordTrimFailure()
@@ -363,7 +364,7 @@ class Vehicle:
             WingCl = 0.
             WingCd = 0.
         WingDrag = .5 * WingCd * v['Wing']['WingArea'] * Density * V**2
-        WingDrag = 0.
+        #WingDrag = 0.
 
         # proportion out forward thrust between the aux prop and the rotors
         BodyDrag = .5 * Density * V**2 * v['Body']['FlatPlateDrag']
