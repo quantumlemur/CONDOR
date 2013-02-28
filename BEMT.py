@@ -28,6 +28,7 @@
 
 import math
 import numpy as np
+import random
 from scipy import interpolate
 
 debug = False
@@ -214,14 +215,15 @@ class Rotor:
         blade = self.blade
         mu = V / Vtip
         lockNumber = 8. # assumed estimate
-        alpha_TPP = math.tan(Fx/Fz) # tip path plane angle
+        alpha_TPP = math.atan(Fx/Fz) # tip path plane angle
+        if debug: print alpha_TPP*180./math.pi
         totalThrust = math.sqrt(Fx**2 + Fz**2)
 
         if debug: pvar(locals(), ('V', 'Fx', 'Fz'))
 
         dtheta_0_multiplier = math.sqrt(Fz**2 + Fx**2) / 1000000
         dtheta_0_multiplier = min(dtheta_0_multiplier, 0.1)
-        dtheta_0_multiplier = max(dtheta_0_multiplier, 0.0001)
+        dtheta_0_multiplier = max(dtheta_0_multiplier, 0.001)
 
         # First we'll check if the pre-existing trim solution is reasonable. If not, re-initialize them.
         if (self.beta_0<0) or (self.beta_0>math.pi/6) or (abs(self.theta_1c)>math.pi/6) or (abs(self.theta_1s)>math.pi/6) or math.isnan(self.power):
@@ -244,11 +246,10 @@ class Rotor:
         liftDeficitPct = 9
         while np.isfinite(P) and steps<maxSteps and abs(theta_0)<math.pi/6 and not (abs(liftDeficitPct)<tol and abs(lastP-P)/P<tol) and abs(P)<40000:
             steps += 1
-            #### These following equations are from slides ~70-80 in Part2.ppt of AE6070 notes.  All angles relative to flight path?
             # find the effective blade section angle of attack
             beta = beta_0
-            U_T = omega*r + V*sinpsi # local tangential velocity.
-            U_P = inflow + V*beta*cospsi # local perpendicular velocity.
+            U_T = omega*r + V*sinpsi*math.cos(alpha_TPP) # local tangential velocity.
+            U_P = inflow + V*beta*cospsi*math.sin(alpha_TPP) # local perpendicular velocity.
             theta = theta_0 + blade.theta_tw*r/R + theta_1c*cospsi - theta_1s*sinpsi
             phi = np.arctan(U_P/U_T)
             alphaEffective = theta - phi
@@ -287,11 +288,12 @@ class Rotor:
             theta_1s += roll
             # Find vertical lift and adjust collective
             L = T * math.cos(alpha_TPP)
-            liftDeficitPct = (totalThrust - T) / totalThrust
+            liftDeficitPct = (totalThrust - T) / abs(random.choice([totalThrust, T]))
             dtheta_0 = liftDeficitPct * dtheta_0_multiplier
             # cap the max change at 0.1
-            #if abs(dtheta_0) > 0.1:
-            #    dtheta_0 /= abs(dtheta_0 / 0.1)
+            if abs(dtheta_0) > 0.005:
+                dtheta_0 /= abs(dtheta_0 / 0.005)
+                dtheta_0 += random.uniform(-0.002, 0.002)
             # and minimum at 0.001
             #if abs(dtheta_0) < 0.0000001:
             #    dtheta_0 /= abs(dtheta_0 / 0.0000001)
@@ -310,7 +312,7 @@ class Rotor:
                 t1s = theta_1s * 180/math.pi
                 t1c = theta_1c * 180/math.pi
                 total = math.sqrt(Fx**2 + Fz**2)
-                dthet = dtheta_0 * 1000
+                dthet = dtheta_0 #* 1000
                 pvar(locals(), ('V', 'steps', 'total', 'T', 'dthet', 'coll', 'b0', 't1c', 't1s', 'Pinduced', 'Pprofile', 'P'))
         self.inflow = inflow
         self.theta_0 = theta_0
@@ -324,6 +326,7 @@ class Rotor:
             if debug: print('%s < %s       %s < %s' % (abs(Fz-L)/Fz, tol, tol, tol))
             P_total = np.nan
         if debug: print P_total
+        if debug: print alpha_TPP * 180/math.pi
 
         # import matplotlib.pyplot as plt
         # f = plt.figure()
@@ -401,11 +404,12 @@ class Rotor:
 
     
 if __name__ == '__main__':
+    debug = True
     from time import clock
     from configobj import ConfigObj
     from validate import Validator
     startTime = clock()
-    GW = 100000.
+    GW = 60000.
     v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
     m = ConfigObj('Config/mission.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
@@ -429,7 +433,7 @@ if __name__ == '__main__':
     diskArea = math.pi * rotor.radius**2
     solidity = bladeArea / diskArea
     pvar(locals(), ('bladeArea', 'diskArea', 'solidity'))
-    speeds = np.arange(0, 500, 5)
+    speeds = np.arange(300, 305, 5)
     Pi = np.zeros(speeds.size)
     Ppr = np.zeros(speeds.size)
     Ppa = np.zeros(speeds.size)
@@ -438,7 +442,7 @@ if __name__ == '__main__':
         V = speeds[i]
         print V
         Fhorizontal = 1./2 * rho * V**2 * f
-        Fvertical = GW # pounds
+        Fvertical = GW  # pounds
         P_tot[i] = rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=v['Simulation']['MaxSteps']) + Fhorizontal*V/550
     import matplotlib.pyplot as plt
     plt.figure()
