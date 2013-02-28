@@ -65,7 +65,7 @@ class SizedVehicle:
                 pvar(locals(), ('steps', 'GWmax', 'GW', 'GWmin', 'couldTrim', 'couldMission', 'ms', 'viableCandidate', 'gA', 'gAW'))
         stopReason = ''
         goodRun = False
-        if not choppah.vconfig['Sizing Results']['CouldTrim']:
+        if not (choppah.vconfig['Sizing Results']['CouldTrim'] and choppah.misSize>0):
             choppah = goodAbove
         if choppah:
             if not choppah.vconfig['Sizing Results']['CouldTrim']:
@@ -108,7 +108,7 @@ if __name__ == '__main__':
     airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
     blah = SizedVehicle(v, m, airfoildata)
     veh = blah.sizeMission()
-    veh.write()
+    if veh: veh.write()
     stopTime = clock()
     elapsed = stopTime - startTime
     if debug: print('Elapsed time: %f' % elapsed)

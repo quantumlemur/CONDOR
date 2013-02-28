@@ -46,6 +46,7 @@ runFile = '%s%s %s' % (runFileFolder, computerName, 'quit')
 killFile = killFilePrefix + computerName
 forceIdleFile = forceIdleFilePrefix + computerName
 inUseFile = inUseFilePrefix + computerName
+lastState = 'quit'
 
 class Worker(multiprocessing.Process):
     
@@ -141,7 +142,7 @@ def updateStatus(state, goodRows=0, totalRows=0, outstandingTasks=1):
     statusLine = '%-20s %-60s %30s' % (computerName, status, time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime()))
     print(statusLine)
     updateElapsedTime = time.time() - lastRunFileUpdateTime
-    if updateElapsedTime>minRunFileUpdateTime or state=='quit':
+    if updateElapsedTime>minRunFileUpdateTime or lastState!=state:
         if os.path.isfile(runFile): os.remove(runFile)
         runFile = '%s%s %s' % (runFileFolder, computerName, status)
         with open(runFile, 'w') as f: f.write('blah')

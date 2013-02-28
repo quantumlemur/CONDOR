@@ -27,7 +27,7 @@ TipSpeedrange = [400, 800]
 GWrange = [15000, 45000]
 
 
-numPerParam = 30
+numPerParam = 10
 sweeplimits = [[100, 250], [300, 1000]] # speed, range
 baselineRange = 544.
 baselineSpeed = 153.
@@ -62,6 +62,7 @@ GWtickhighpadding = 4000
 MRPtickspacing = 250
 tickresolution = 1000
 
+splitFourPlots = False
 displayPlots = False
 saveData = True
 saveFigures = True
@@ -229,8 +230,13 @@ def GenerateBaselineData():
     v['Wing']['MaxSpeed'] = baselineSpeed
     vehicle = SizedVehicle(v, m, airfoildata)
     vehicle = vehicle.sizeMission()
-    vehicle.write()
-    baselineGW = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
+    if vehicle:
+        vehicle.generatePowerCurve()
+        vehicle.findHoverCeiling()
+        vehicle.findMaxRange()
+        vehicle.findMaxSpeed()
+        vehicle.write()
+        baselineGW = vehicle.vconfig['Sizing Results']['SizedGrossWeight'] if vehicle else float('nan')
     
     return (SPEED, RANGE, GW, GWN, baselineGW)
     
@@ -311,20 +317,21 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
             v[section[k]][var[k]] = value[k]
         vehicle = SizedVehicle(v, m, airfoildata)
         vehicle = vehicle.sizeMission()
-        newGW = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
-        baselineGW = baseline[4]
-        percentage = (baselineGW - newGW) / baselineGW
-        if percentage<0:
-            s = '{:.1%} GW Increase'.format(-percentage)
-            labeltextcolor = badcolor
-            marker = badmarker
-        else:
-            s = '{:.1%} GW Improvement'.format(percentage)
-            labeltextcolor = goodcolor
-            marker = goodmarker
-        if newGW != baselineGW:
-            plt.plot([baselineSpeed], [baselineRange], marker, markersize=pointmarkersize)
-            plt.text(baselineSpeed+singleHoffset, baselineRange+singleVoffset, s, fontweight='bold', fontsize=labelfontsize, color=labeltextcolor, bbox={'facecolor':labelboxcolor, 'edgecolor':labelboxcolor, 'alpha':labelalpha, 'pad':labelpad})
+        if vehicle:
+            newGW = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
+            baselineGW = baseline[4]
+            percentage = (baselineGW - newGW) / baselineGW
+            if percentage<0:
+                s = '{:.1%} GW Increase'.format(-percentage)
+                labeltextcolor = badcolor
+                marker = badmarker
+            else:
+                s = '{:.1%} GW Improvement'.format(percentage)
+                labeltextcolor = goodcolor
+                marker = goodmarker
+            if newGW != baselineGW:
+                plt.plot([baselineSpeed], [baselineRange], marker, markersize=pointmarkersize)
+                plt.text(baselineSpeed+singleHoffset, baselineRange+singleVoffset, s, fontweight='bold', fontsize=labelfontsize, color=labeltextcolor, bbox={'facecolor':labelboxcolor, 'edgecolor':labelboxcolor, 'alpha':labelalpha, 'pad':labelpad})
 
     #plot = plt.subplot(1, 2, 2)
     #plot.tick_params(labelsize=axislabelfontsize)
@@ -422,34 +429,40 @@ def SweepContours(baseline):
         # extraContours = scipy.ndimage.zoom(extraContours, 3)
 
         GWN = baseline[3]
-        plt.figure(num=None, figsize=(doublefigW, doublefigH), dpi=figDPI, facecolor='w', edgecolor='k')
+        if not splitFourPlots:
+            plt.figure(num=None, figsize=(doublefigW, doublefigH), dpi=figDPI, facecolor='w', edgecolor='k')
         
         for DLi in xrange(len(Spread)):
-            plot = plt.subplot(2, 2, DLi+1)
+            if splitFourPlots:
+                plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
+                plot = plt.subplot(1, 1, 1)
+            else:
+                plot = plt.subplot(2, 2, DLi+1)
             plot.tick_params(labelsize=axislabelfontsize)
-            try:
-                CS = plt.contourf(SPEED, RANGE, GW[DLi], GWN)
-                cb = plt.colorbar(CS)
-                cb.ax.tick_params(labelsize=axislabelfontsize)
-                CS = plt.contour(baseline[0], baseline[1], baseline[2], GWN, colors='k')
-                plt.clabel(CS, inline=1, fontsize=contourfontsize, fmt='%1.f')
-                if plotExtraContours:
-                    CS = plt.contour(SPEED, RANGE, extraContours[DLi], colors='r')
-                    plt.clabel(CS, inline=1, fontsize=contourfontsize, fmt='%.4f')
-                plt.xlabel('Ingress Speed (kts)', fontsize=labelfontsize)
-                plt.ylabel('Mission Range (nm)', fontsize=labelfontsize)
-                plt.title(title % Spread[DLi], fontsize=titlefontsize)
-                plt.grid(True)
-                if annotatePlots:
-                    # measure improvement over baseline
-                    m = ConfigObj(mconfig)
-                    v = ConfigObj(vconfig)
-                    m['Segment 2']['Distance'] = baselineRange
-                    m['Segment 2']['Speed'] = baselineSpeed
-                    v['Wing']['MaxSpeed'] = baselineSpeed
-                    v[section][sweepVar] = Spread[DLi]
-                    vehicle = SizedVehicle(v, m)
-                    vehicle = vehicle.sizeMission()
+            # try:
+            CS = plt.contourf(SPEED, RANGE, GW[DLi], GWN)
+            cb = plt.colorbar(CS)
+            cb.ax.tick_params(labelsize=axislabelfontsize)
+            CS = plt.contour(baseline[0], baseline[1], baseline[2], GWN, colors='k')
+            plt.clabel(CS, inline=1, fontsize=contourfontsize, fmt='%1.f')
+            if plotExtraContours and extraContour != 'Nothing':
+                CS = plt.contour(SPEED, RANGE, extraContours[DLi], colors='r')
+                plt.clabel(CS, inline=1, fontsize=contourfontsize, fmt='%.4f')
+            plt.xlabel('Ingress Speed (kts)', fontsize=labelfontsize)
+            plt.ylabel('Mission Range (nm)', fontsize=labelfontsize)
+            plt.title(title % Spread[DLi], fontsize=titlefontsize)
+            plt.grid(True)
+            if annotatePlots:
+                # measure improvement over baseline
+                m = ConfigObj(mconfig)
+                v = ConfigObj(vconfig)
+                m['Segment 2']['Distance'] = baselineRange
+                m['Segment 2']['Speed'] = baselineSpeed
+                v['Wing']['MaxSpeed'] = baselineSpeed
+                v[section][sweepVar] = Spread[DLi]
+                vehicle = SizedVehicle(v, m, airfoildata)
+                vehicle = vehicle.sizeMission()
+                if vehicle:
                     newGW = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
                     baselineGW = baseline[4]
                     percentage = (baselineGW - newGW) / baselineGW
@@ -464,14 +477,20 @@ def SweepContours(baseline):
                     if newGW != baselineGW:
                         plt.plot([baselineSpeed], [baselineRange], marker, markersize=pointmarkersize)
                         plt.text(baselineSpeed+labelHoffset, baselineRange+labelVoffset, s, fontweight='bold', fontsize=labelfontsize, color=labeltextcolor, bbox={'facecolor':labelboxcolor, 'edgecolor':labelboxcolor, 'alpha':labelalpha, 'pad':labelpad})
-            except:
-                print GW[DLi]
-                print GWN
-        plt.tight_layout()
-        if plotExtraContours: sweepVar = '%sExtra' % sweepVar
-        if saveFigures: pylab.savefig('Output/Figures/%sGWContour.png' % sweepVar, bbox_inches=0, dpi=figDPI)
-        if displayPlots: plt.show()
-        if saveData: np.savez('Output/Data/%sContourData' % sweepVar, SPEED=SPEED, RANGE=RANGE, GW=GW, GWN=GWN)
+            if splitFourPlots:
+                plt.tight_layout()
+                if plotExtraContours: sweepVar = '%sExtra' % sweepVar
+                if saveFigures: pylab.savefig('Output/Figures/%s_%d_GWContour.png' % (sweepVar, DLi), bbox_inches=0, dpi=figDPI)
+                if displayPlots: plt.show()
+            # except:
+            #     print GW[DLi]
+            #     print GWN
+        if not splitFourPlots:
+            plt.tight_layout()
+            if plotExtraContours: sweepVar = '%sExtra' % sweepVar
+            if saveFigures: pylab.savefig('Output/Figures/%sGWContour.png' % sweepVar, bbox_inches=0, dpi=figDPI)
+            if displayPlots: plt.show()
+            if saveData: np.savez('Output/Data/%sContourData' % sweepVar, SPEED=SPEED, RANGE=RANGE, GW=GW, GWN=GWN)
 
 def PerformanceCurve():
     v = ConfigObj(vconfig)

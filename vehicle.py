@@ -364,7 +364,7 @@ class Vehicle:
             WingCl = 0.
             WingCd = 0.
         WingDrag = .5 * WingCd * v['Wing']['WingArea'] * Density * V**2
-        #WingDrag = 0.
+        WingDrag = 0.
 
         # proportion out forward thrust between the aux prop and the rotors
         BodyDrag = .5 * Density * V**2 * v['Body']['FlatPlateDrag']
