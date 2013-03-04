@@ -29,7 +29,7 @@
 import math
 import numpy as np
 import random
-from scipy import interpolate
+#from scipy import interpolate
 
 debug = False
 
@@ -52,9 +52,14 @@ class Blade:
         self.dragDivergenceMachNumber = dragDivergenceMachNumber
         #airfoildata = np.genfromtxt(c81File, skip_header=skip_header, skip_footer=skip_footer) # read in the airfoil file
         # generate the airfoil data splines.  They are assumed to be in degrees, and are converted to radians
-        self.clspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,1])
-        self.cdspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,2])
-        self.cmspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,3])
+
+        # self.clspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,1])
+        # self.cdspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,2])
+        # self.cmspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,3])
+        self.alphadata = airfoildata[:,0]*math.pi/180
+        self.cldata = airfoildata[:,1]
+        self.cddata = airfoildata[:,2]
+        self.cmdata = airfoildata[:,3]
         # generate the piecewise data on the blade
         endpoints, self.dr = np.linspace(rootCutout, 1, segments+1, retstep=True)
         self.r = np.zeros(endpoints.size - 1)
@@ -62,43 +67,38 @@ class Blade:
         for i in range(self.r.size):
             self.r[i] = (endpoints[i] + endpoints[i+1]) / 2
         # create the splines and store the twist and chord distribution
-        twistspl = interpolate.splrep(np.array([rootCutout,1]), np.array([0,tipTwist*math.pi/180.]), k=1)  # k=1 for linear interpolation
-        self.twist = interpolate.splev(self.r, twistspl)
-        twist75 = interpolate.splev(.75, twistspl)
+        #twistspl = interpolate.splrep(np.array([rootCutout,1]), np.array([0,tipTwist*math.pi/180.]), k=1)  # k=1 for linear interpolation
+        self.twist = np.interp(self.r, [rootCutout,1], [0,tipTwist*math.pi/180.]) #interpolate.splev(self.r, twistspl)
+        twist75 = np.interp(.75, [rootCutout,1], [0,tipTwist*math.pi/180.]) #interpolate.splev(.75, twistspl)
         self.twist -= twist75
         self.theta_tw = tipTwist * math.pi/180.
         rootChord = 2 * averageChord / (taperRatio + 1)
-        chordspl = interpolate.splrep(np.array([rootCutout,1]), np.array([rootChord,rootChord*taperRatio]), k=1)  # k=1 for linear interpolation
-        self.chord = interpolate.splev(self.r, chordspl)
+        #chordspl = interpolate.splrep(np.array([rootCutout,1]), np.array([rootChord,rootChord*taperRatio]), k=1)  # k=1 for linear interpolation
+        self.chord = np.interp(self.r, [rootCutout,1], [rootChord,rootChord*taperRatio]) #interpolate.splev(self.r, chordspl)
 
     def cl(self, alpha):
         shape = alpha.shape
         alpha = np.reshape(alpha, alpha.size)
-        alpha = interpolate.splev(alpha, self.clspl)
-        alpha = np.reshape(alpha, shape)
-        return alpha
+        #alpha = interpolate.splev(alpha, self.clspl)
+        cls = np.interp(alpha, self.alphadata, self.cldata)
+        cls = np.reshape(cls, shape)
+        return cls
     
     def cd(self, alpha):
         shape = alpha.shape
         alpha = np.reshape(alpha, alpha.size)
-        alpha = interpolate.splev(alpha, self.cdspl)
-        alpha = np.reshape(alpha, shape)
-        return alpha
+        #alpha = interpolate.splev(alpha, self.cdspl)
+        cds = np.interp(alpha, self.alphadata, self.cddata)
+        cds = np.reshape(cds, shape)
+        return cds
     
     def cm(self, alpha):
         shape = alpha.shape
         alpha = np.reshape(alpha, alpha.size)
-        alpha = interpolate.splev(alpha, self.cmspl)
-        alpha = np.reshape(alpha, shape)
-        return alpha
-    
-    def a(self, alpha):
-        shape = alpha.shape
-        alpha = np.reshape(alpha, alpha.size)
-        alpha = interpolate.splev(alpha, self.clspl, der=1)
-        alpha = np.reshape(alpha, shape)
-        return alpha
-
+        #alpha = interpolate.splev(alpha, self.cmspl)
+        cms = np.interp(alpha, self.alphadata, self.cmdata)
+        cms = np.reshape(cms, shape)
+        return cms
 
     def write(self):
         # right now this function just writes out some of the blade data to test the reading and interpolation routines.  Should remove it once the class is finalized.
