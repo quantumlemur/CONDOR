@@ -29,7 +29,6 @@
 import math
 import numpy as np
 import random
-#from scipy import interpolate
 
 debug = False
 
@@ -51,11 +50,7 @@ class Blade:
     def __init__(self, airfoildata, averageChord, skip_header=0, skip_footer=0, taperRatio=1, tipTwist=0, rootCutout=0, segments=15, dragDivergenceMachNumber=.85):
         self.dragDivergenceMachNumber = dragDivergenceMachNumber
         #airfoildata = np.genfromtxt(c81File, skip_header=skip_header, skip_footer=skip_footer) # read in the airfoil file
-        # generate the airfoil data splines.  They are assumed to be in degrees, and are converted to radians
-
-        # self.clspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,1])
-        # self.cdspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,2])
-        # self.cmspl = interpolate.splrep(airfoildata[:,0]*math.pi/180, airfoildata[:,3])
+        # store the airfoil data.  They are assumed to be in degrees, and are converted to radians
         self.alphadata = airfoildata[:,0]*math.pi/180
         self.cldata = airfoildata[:,1]
         self.cddata = airfoildata[:,2]
@@ -67,14 +62,16 @@ class Blade:
         for i in range(self.r.size):
             self.r[i] = (endpoints[i] + endpoints[i+1]) / 2
         # create the splines and store the twist and chord distribution
-        #twistspl = interpolate.splrep(np.array([rootCutout,1]), np.array([0,tipTwist*math.pi/180.]), k=1)  # k=1 for linear interpolation
-        self.twist = np.interp(self.r, [rootCutout,1], [0,tipTwist*math.pi/180.]) #interpolate.splev(self.r, twistspl)
-        twist75 = np.interp(.75, [rootCutout,1], [0,tipTwist*math.pi/180.]) #interpolate.splev(.75, twistspl)
+        self.twist = np.interp(self.r, [rootCutout,1], [0,tipTwist*math.pi/180.])
+        twist75 = np.interp(.75, [rootCutout,1], [0,tipTwist*math.pi/180.])
         self.twist -= twist75
         self.theta_tw = tipTwist * math.pi/180.
         rootChord = 2 * averageChord / (taperRatio + 1)
-        #chordspl = interpolate.splrep(np.array([rootCutout,1]), np.array([rootChord,rootChord*taperRatio]), k=1)  # k=1 for linear interpolation
-        self.chord = np.interp(self.r, [rootCutout,1], [rootChord,rootChord*taperRatio]) #interpolate.splev(self.r, chordspl)
+        self.chord = np.interp(self.r, [rootCutout,1], [rootChord,rootChord*taperRatio])
+        if debug:
+            print self.twist*180/math.pi
+            print ''
+            print self.chord
 
     def cl(self, alpha):
         shape = alpha.shape
