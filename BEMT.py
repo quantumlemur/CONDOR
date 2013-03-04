@@ -223,7 +223,7 @@ class Rotor:
 
         dtheta_0_multiplier = math.sqrt(Fz**2 + Fx**2) / 1000000
         dtheta_0_multiplier = min(dtheta_0_multiplier, 0.1)
-        dtheta_0_multiplier = max(dtheta_0_multiplier, 0.001)
+        dtheta_0_multiplier = max(dtheta_0_multiplier, 0.0001)
 
         # First we'll check if the pre-existing trim solution is reasonable. If not, re-initialize them.
         if (self.beta_0<0) or (self.beta_0>math.pi/6) or (abs(self.theta_1c)>math.pi/6) or (abs(self.theta_1s)>math.pi/6) or math.isnan(self.power):
@@ -288,12 +288,12 @@ class Rotor:
             theta_1s += roll
             # Find vertical lift and adjust collective
             L = T * math.cos(alpha_TPP)
-            liftDeficitPct = (totalThrust - T) / abs(random.choice([totalThrust, T]))
+            liftDeficitPct = (totalThrust - T) / abs(T) #abs(random.choice([totalThrust, T]))
             dtheta_0 = liftDeficitPct * dtheta_0_multiplier
             # cap the max change at 0.1
             if abs(dtheta_0) > 0.005:
                 dtheta_0 /= abs(dtheta_0 / 0.005)
-                dtheta_0 += random.uniform(-0.002, 0.002)
+                #dtheta_0 += random.uniform(-0.002, 0.002)
             # and minimum at 0.001
             #if abs(dtheta_0) < 0.0000001:
             #    dtheta_0 /= abs(dtheta_0 / 0.0000001)

@@ -3,10 +3,15 @@ import numpy as np
 import scipy.ndimage
 import matplotlib.pylab as pylab
 import matplotlib.pyplot as plt
-
+from vehicle import Vehicle
+from configobj import ConfigObj
+from validate import Validator
+import random
 
 singlefigW = 3.4
 singlefigH = 2.5
+doublefigW = 7
+doublefigH = 5
 figDPI = 600
 inline_spacing = 5
 contourfontsize = 6
@@ -42,7 +47,25 @@ saveFigures = True
 annotatePlots = True
 
 plotScalingPlots = False
-plotRfPlot = True
+plotRfPlot = False
+plotPerformanceCurve = True
+
+
+
+
+
+
+
+
+vconfig = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
+mconfig = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
+vvdt = Validator()
+vconfig.validate(vvdt)
+mvdt = Validator()
+mconfig.validate(mvdt)
+c81File='Config/%s'%vconfig['Main Rotor']['AirfoilFile']
+airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+
 
 def RfPlot():
     plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
@@ -70,46 +93,90 @@ def RfPlot():
 
     plt.tight_layout()
 
-    if displayPlots: plt.show()
     if saveFigures: pylab.savefig('Output/Figures/RfPlot.png', dpi=figDPI, bbox_inches=0)
+    if displayPlots: plt.show()
+
+def density(altitude):
+    return 5e-13*altitude**2 - 7e-8*altitude + .0024 # ISA+15C?
+
+
+def PerformanceCurve():
+    v = ConfigObj(vconfig)
+    m = ConfigObj(mconfig)
+    v['Simulation']['PowerCurveResolution'] = 1
+    choppah = Vehicle(v, m, 26000, airfoildata)
+    choppah.generatePowerCurve()
+    #choppah.write()
+    Vs = np.array([50.1073, 60.2146, 69.9122, 80.0195, 90.1268, 100.098, 110.205, 120.312, 127.415, 137.249, 144.624, 151.59, 156.644, 163.2, 167.98])
+    Fs = np.array([1240.51, 1156.96, 1113.92, 1096.2, 1103.8, 1129.11, 1177.22, 1240.51, 1301.27, 1410.13, 1518.99, 1655.7, 1772.15, 1972.15, 2134.18])
+    HPs = Fs * 1.3 + (Fs**2*.0002)
+    
+    plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
+    plt.plot(choppah.vconfig['Power Curve']['Speeds'], choppah.vconfig['Power Curve']['PowersSL'])
+    plt.plot(choppah.vconfig['Power Curve']['Speeds'], choppah.vconfig['Power Curve']['PowersCruise'])
+    MCPspeeds = [0, 200]
+    mcp = 2043*2
+    mcpalt = mcp*density(10000)/density(0)
+    MCPSL = [mcp, mcp]
+    MCPalt = [mcpalt, mcpalt]
+    plt.plot(MCPspeeds, MCPSL, 'b')
+    plt.plot(MCPspeeds, MCPalt, 'g')
+    plt.plot(Vs, HPs, marker='o', markersize=3, linestyle='')
+    plt.axis([0, 200, 1000, 6000])
+    plt.legend(('Sea Level', '10k ft'), fontsize=labelfontsize)
+    plt.tick_params(labelsize=axislabelfontsize)
+    plt.xlabel('Airspeed (kts)', fontsize=labelfontsize)
+    plt.ylabel('Power (hp)', fontsize=labelfontsize)
+    #plt.title('Predicted S-92 Power Curve', fontsize=titlefontsize)
+    plt.tight_layout()
+    plt.grid(True)
+    
+    if saveFigures: pylab.savefig('Output/Figures/S92PerformanceCurve.png', bbox_inches=0, dpi=figDPI)
+    if displayPlots: plt.show()
 
 
 def ScalingPlots():
     # flat plate drag area
-    plt.figure(num=None, figsize=(figW/1.2, figH/1.2), dpi=figDPI, facecolor='w', edgecolor='k')
+    plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
     dragGW = np.arange(0, 40000, 100)
     flatplatedrag = 0.25 * dragGW**.5
     heliDrags = np.array([15, 21, 22.5, 37, 32, 38, 41, 43, 56, 40])
     heliGWs = np.array([2.2, 8, 9, 13, 18, 20.5, 22, 33, 39.5, 25]) * 1000
     heliLabels = np.array(['S-52', 'S-55', 'UH-1', 'S-58', 'S-61', 'CH-46', 'SA 321', 'CH-47', 'CH-53A', 'S-92'])
+    heliLabelsX = np.array([500, 8000, 10000, 9000, 19000, 15000, 20000, 33000, 33000, 25000])
+    heliLabelsY = np.array([17,  16,   21,    39,   27,    39,    43,    38,    51,    35])
+    print heliGWs-2000
+    print heliDrags+2
     for i in xrange(len(heliLabels)):
-        plt.text(heliGWs[i]-1500, heliDrags[i]+1, heliLabels[i], fontsize=labelfontsize)#, bbox={'facecolor':labelboxcolor, 'edgecolor':labelboxcolor, 'alpha':labelalpha, 'pad':labelpad})
+        plt.text(heliLabelsX[i], heliLabelsY[i], heliLabels[i], fontsize=labelfontsize)#, bbox={'facecolor':labelboxcolor, 'edgecolor':labelboxcolor, 'alpha':labelalpha, 'pad':labelpad})
     plt.plot(heliGWs, heliDrags, 'ko')
     plot = plt.plot(dragGW, flatplatedrag)
     plt.tick_params(labelsize=axislabelfontsize)
     plt.xlabel('Gross Weight (lbs)', fontsize=labelfontsize)
     plt.ylabel('Flat Plate Drag Area (sq ft)', fontsize=labelfontsize)
-    plt.title('Flat Plate Drag Scaling', fontsize=titlefontsize)
+    #plt.title('Flat Plate Drag Scaling', fontsize=titlefontsize)
+    plt.xticks(np.arange(0, 40000, 10000))
     plt.tight_layout()
-    if saveFigures: pylab.savefig('Output/Figures/flatPlateDragScaling.png', bbox_inches=0)
+    if saveFigures: pylab.savefig('Output/Figures/flatPlateDragScaling.png', bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
     
     # engine weight
-    plt.figure(num=None, figsize=(figW, figH), dpi=figDPI, facecolor='w', edgecolor='k')
-    plt.subplot(2, 2, 1)
+    plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
     MCP = np.arange(0, 4000, 10)
     weight = ((0.1054*(MCP)**2+358*(MCP)+2.757*10**4)/((MCP)+1180))
     plot = plt.plot(MCP, weight)
-    plt.text(200, 580, r'$\frac{0.1054*MCP^2 + 358*MCP + 2.757*10^4}{MCP+1180}$', fontsize=labelfontsize+4)
+    #plt.text(200, 580, r'$\frac{0.1054*MCP^2 + 358*MCP + 2.757*10^4}{MCP+1180}$', fontsize=labelfontsize+4)
     plt.tick_params(labelsize=axislabelfontsize)
     plt.xticks(np.arange(0, 5000, 1000))
     plt.xlabel('Max Continuous Power (hp)', fontsize=labelfontsize)
     plt.ylabel('Engine Weight (lbs)', fontsize=labelfontsize)
-    plt.title('Engine Weight Scaling', fontsize=titlefontsize)
+    #plt.title('Engine Weight Scaling', fontsize=titlefontsize)
     plt.tight_layout()
-    
+    if saveFigures: pylab.savefig('Output/Figures/EngineWeight_Scaling.png', bbox_inches=0, dpi=figDPI)
+    if displayPlots: plt.show()
+
     # drive system weight
-    plt.subplot(2, 2, 2)
+    plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
     GW = np.arange(0, 40000, 100)
     MCP = [2000., 4000., 6000.]
     weight = np.zeros((len(MCP), GW.size))
@@ -118,49 +185,56 @@ def ScalingPlots():
         weight[i] = (525.*(GW/1000.)**1.14)/((GW/MCP[i])**0.763*DL**0.381)
         plot = plt.plot(GW, weight[i])
         plt.text(30000, weight[i][300]-200, '%d hp' % MCP[i], fontsize=labelfontsize)
-    plt.text(15000, 400, r'$\frac{525*(GW/1000)^{1.14}}{(GW/MCP)^{.763}*DL^{.381}}$', fontsize=labelfontsize+5)
+    #plt.text(15000, 400, r'$\frac{525*(GW/1000)^{1.14}}{(GW/MCP)^{.763}*DL^{.381}}$', fontsize=labelfontsize+5)
     plt.tick_params(labelsize=axislabelfontsize)
     plt.xticks(np.arange(0, 50000, 10000))
     plt.xlabel('Gross Weight (lbs)', fontsize=labelfontsize)
     plt.ylabel('Drive System Weight (lbs)', fontsize=labelfontsize)
-    plt.title('Drive System Scaling (DL=10psf)', fontsize=titlefontsize)
+    #plt.title('Drive System Scaling (DL=10psf)', fontsize=titlefontsize)
     plt.tight_layout()
-        
+    if saveFigures: pylab.savefig('Output/Figures/DriveSystemWeight_Scaling.png', bbox_inches=0, dpi=figDPI)
+    if displayPlots: plt.show()
+
     # wing weight
-    plt.subplot(2, 2, 3)
+    plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
     GW = np.arange(0, 40000, 100)
     SRR = [1., 2., 3.]
     weights = np.zeros((len(SRR), GW.size))
     DL = 10
+    labelX = [31000, 31000, 30000]
+    labelY = [600, 1200, 1800]
     for i in xrange(len(SRR)):    
         weights[i] = 0.00272*GW**1.4/DL**0.8*SRR[i]**0.8
         plt.plot(GW, weights[i])
-        plt.text(30000, weights[i][300]-100, r'$\frac{Span}{R}=%d$' % SRR[i], fontsize=labelfontsize)
-    plt.text(5000, 2250, r'$\frac{.00272*GW^{1.4}}{DL^{.8}}*\frac{Span}{R}^{.8}$', fontsize=labelfontsize+5)
+        plt.text(labelX[i], labelY[i], r'$\frac{Span}{R}=%d$' % SRR[i], fontsize=labelfontsize)
+    #plt.text(5000, 2250, r'$\frac{.00272*GW^{1.4}}{DL^{.8}}*\frac{Span}{R}^{.8}$', fontsize=labelfontsize+5)
     plt.tick_params(labelsize=axislabelfontsize)
     plt.xticks(np.arange(0, 50000, 10000))
     plt.xlabel('Gross Weight (lbs)', fontsize=labelfontsize)
     plt.ylabel('Wing Weight (lbs)', fontsize=labelfontsize)
-    plt.title('Wing Weight Scaling (DL=10psf)', fontsize=titlefontsize)
+    #plt.title('Wing Weight Scaling (DL=10psf)', fontsize=titlefontsize)
     plt.tight_layout()
-    
+    if saveFigures: pylab.savefig('Output/Figures/WingWeight_Scaling.png', bbox_inches=0, dpi=figDPI)
+    if displayPlots: plt.show()
+
     # SFC
-    plt.subplot(2, 2, 4)
+    plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
     gamma = np.arange(.5, 4, .1)
     SFCfrac = (-0.00932*gamma**2+0.865*gamma+0.445)/(gamma+0.301)  
     plt.plot(gamma, SFCfrac)
-    plt.text(.8, 1.05, r'$\frac{SFC}{SFC_{baseline}}=\frac{-.00932*\gamma^2+.865*\gamma+.445}{\gamma+.301}$', fontsize=labelfontsize+4)
+    #plt.text(.8, 1.05, r'$\frac{SFC}{SFC_{baseline}}=\frac{-.00932*\gamma^2+.865*\gamma+.445}{\gamma+.301}$', fontsize=labelfontsize+4)
     plt.tick_params(labelsize=axislabelfontsize)
     #plt.xticks(np.arange(0, 50000, 10000))
     plt.xlabel(r'$\gamma = MCP/MCP_{baseline}$', fontsize=labelfontsize)
     plt.ylabel(r'$SFC/SFC_{baseline}$', fontsize=labelfontsize)
-    plt.title('Engine SFC Scaling', fontsize=titlefontsize)
+    #plt.title('Engine SFC Scaling', fontsize=titlefontsize)
     plt.tight_layout()
-
+    if saveFigures: pylab.savefig('Output/Figures/SFC_Scaling.png', bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
-    if saveFigures: pylab.savefig('Output/Figures/WeightsAndSFCScaling.png', bbox_inches=0)
+
 
 
 if __name__ == '__main__':
     if plotScalingPlots: ScalingPlots()
     if plotRfPlot: RfPlot()
+    if plotPerformanceCurve: PerformanceCurve()
