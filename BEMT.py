@@ -25,10 +25,13 @@
 
 
 
-
+try:
+    import numpypy as np
+except:
+    import numpy as np
 import math
-import numpy as np
 import random
+from bisect import bisect_left
 
 debug = False
 
@@ -40,6 +43,98 @@ def pdeg(locals_, vars_):
     s = ['%s: %.2f' % (var*180./math.pi, locals_[var]) for var in vars_]
     print '     '.join(s)
 
+def linspace(a, b, n=100):
+    if n < 2:
+        return b
+    diff = (float(b) - a)/(n - 1)
+    return (np.array([diff * i + a  for i in range(n)]), diff)
+
+def interpolate(xout, xin, yin, method='linear'):
+    """
+    Interpolate the curve defined by (xin, yin) at points xout. The array
+    xin must be monotonically increasing. The output has the same data type as
+    the input yin.
+
+    :param yin: y values of input curve
+    :param xin: x values of input curve
+    :param xout: x values of output interpolated curve
+    :param method: interpolation method ('linear' | 'nearest')
+
+    @:rtype: numpy array with interpolated curve
+    """
+    lenxin = len(xin)
+
+    i1 = np.array([bisect_left(xin, xo) for xo in xout])
+    #i1[ i1==0 ] = 1
+    #i1[ i1==lenxin ] = lenxin-1
+
+    x0 = xin[i1-1]
+    x1 = xin[i1]
+    y0 = yin[i1-1]
+    y1 = yin[i1]
+
+    if method == 'linear':
+        return (xout - x0) / (x1 - x0) * (y1 - y0) + y0
+    elif method == 'nearest':
+        return np.where(np.abs(xout - x0) < np.abs(xout - x1), y0, y1)
+    else:
+        raise ValueError('Invalid interpolation method: %s' % method)# Python code here
+
+def meshgrid(x,y):
+    """
+    Return coordinate matrices from two coordinate vectors.
+
+    Parameters
+    ----------
+    x, y : ndarray
+        Two 1-D arrays representing the x and y coordinates of a grid.
+
+    Returns
+    -------
+    X, Y : ndarray
+        For vectors `x`, `y` with lengths ``Nx=len(x)`` and ``Ny=len(y)``,
+        return `X`, `Y` where `X` and `Y` are ``(Ny, Nx)`` shaped arrays
+        with the elements of `x` and y repeated to fill the matrix along
+        the first dimension for `x`, the second for `y`.
+
+    See Also
+    --------
+    index_tricks.mgrid : Construct a multi-dimensional "meshgrid"
+                         using indexing notation.
+    index_tricks.ogrid : Construct an open multi-dimensional "meshgrid"
+                         using indexing notation.
+
+    Examples
+    --------
+    >>> X, Y = np.meshgrid([1,2,3], [4,5,6,7])
+    >>> X
+    array([[1, 2, 3],
+           [1, 2, 3],
+           [1, 2, 3],
+           [1, 2, 3]])
+    >>> Y
+    array([[4, 4, 4],
+           [5, 5, 5],
+           [6, 6, 6],
+           [7, 7, 7]])
+
+    `meshgrid` is very useful to evaluate functions on a grid.
+
+    >>> x = np.arange(-5, 5, 0.1)
+    >>> y = np.arange(-5, 5, 0.1)
+    >>> xx, yy = np.meshgrid(x, y)
+    >>> z = np.sin(xx**2+yy**2)/(xx**2+yy**2)
+
+    """
+    x = np.asarray(x)
+    y = np.asarray(y)
+    numRows, numCols = len(y), len(x)  # yes, reversed
+    x = x.reshape(1,numCols)
+    X = x.repeat(numRows, axis=0)
+
+    y = y.reshape(numRows,1)
+    Y = y.repeat(numCols, axis=1)
+    return X, Y
 
 class Blade:
     # This is a very simple class intended to just hold the configuration for a single blade.
@@ -51,23 +146,25 @@ class Blade:
         self.dragDivergenceMachNumber = dragDivergenceMachNumber
         #airfoildata = np.genfromtxt(c81File, skip_header=skip_header, skip_footer=skip_footer) # read in the airfoil file
         # store the airfoil data.  They are assumed to be in degrees, and are converted to radians
+        airfoildata = np.array(airfoildata)
         self.alphadata = airfoildata[:,0]*math.pi/180
         self.cldata = airfoildata[:,1]
         self.cddata = airfoildata[:,2]
         self.cmdata = airfoildata[:,3]
         # generate the piecewise data on the blade
-        endpoints, self.dr = np.linspace(rootCutout, 1, segments+1, retstep=True)
+        endpoints, self.dr = linspace(rootCutout, 1, segments+1) #, retstep=True)
         self.r = np.zeros(endpoints.size - 1)
         # set the r values as the midpoints of each segment
         for i in range(self.r.size):
             self.r[i] = (endpoints[i] + endpoints[i+1]) / 2
         # create the splines and store the twist and chord distribution
-        self.twist = np.interp(self.r, [rootCutout,1], [0,tipTwist*math.pi/180.])
-        twist75 = np.interp(.75, [rootCutout,1], [0,tipTwist*math.pi/180.])
+        self.twist = interpolate(self.r, np.array([rootCutout,1]), np.array([0,tipTwist*math.pi/180.]))
+        twist75 = interpolate([.75], np.array([rootCutout,1]), np.array([0,tipTwist*math.pi/180.]))
+        print twist75
         self.twist -= twist75
         self.theta_tw = tipTwist * math.pi/180.
         rootChord = 2 * averageChord / (taperRatio + 1)
-        self.chord = np.interp(self.r, [rootCutout,1], [rootChord,rootChord*taperRatio])
+        self.chord = interpolate(self.r, np.array([rootCutout,1]), np.array([rootChord,rootChord*taperRatio]))
         if debug:
             print self.twist*180/math.pi
             print ''
@@ -77,7 +174,7 @@ class Blade:
         shape = alpha.shape
         alpha = np.reshape(alpha, alpha.size)
         #alpha = interpolate.splev(alpha, self.clspl)
-        cls = np.interp(alpha, self.alphadata, self.cldata)
+        cls = interpolate(alpha, self.alphadata, self.cldata)
         cls = np.reshape(cls, shape)
         return cls
     
@@ -85,7 +182,7 @@ class Blade:
         shape = alpha.shape
         alpha = np.reshape(alpha, alpha.size)
         #alpha = interpolate.splev(alpha, self.cdspl)
-        cds = np.interp(alpha, self.alphadata, self.cddata)
+        cds = interpolate(alpha, self.alphadata, self.cddata)
         cds = np.reshape(cds, shape)
         return cds
     
@@ -93,7 +190,7 @@ class Blade:
         shape = alpha.shape
         alpha = np.reshape(alpha, alpha.size)
         #alpha = interpolate.splev(alpha, self.cmspl)
-        cms = np.interp(alpha, self.alphadata, self.cmdata)
+        cms = interpolate(alpha, self.alphadata, self.cmdata)
         cms = np.reshape(cms, shape)
         return cms
 
@@ -120,11 +217,11 @@ class Rotor:
         self.numblades = numblades
         self.omega = Vtip / radius
         # set up 1D arrays of psi and r...
-        self.psi1D, self.dpsi = np.linspace(0, 2*math.pi, psiSegments, endpoint=False, retstep=True)
+        self.psi1D, self.dpsi = linspace(0, 2*math.pi, psiSegments)
         r1D = self.blade.r
         # ...and convert them to 2D, plus chord and theta
-        self.r, self.psi = np.meshgrid(r1D, self.psi1D)
-        self.chord, self.psi = np.meshgrid(blade.chord, self.psi1D)
+        self.r, self.psi = meshgrid(r1D, self.psi1D)
+        self.chord, self.psi = meshgrid(blade.chord, self.psi1D)
         # dimensionalize some of the blade data
         self.chord = self.chord * radius
         self.r = self.r * radius

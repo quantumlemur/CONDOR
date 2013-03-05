@@ -3,8 +3,12 @@ import csv
 import sys
 import time
 import random
-import numpy as np
 import multiprocessing
+
+try:
+    import numpypy as np
+except:
+    import numpy as np
 
 from rf import SizedVehicle
 from configobj import ConfigObj
@@ -169,12 +173,17 @@ if __name__ == '__main__':
             mvdt = Validator()
             m.validate(mvdt)
             c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
-            airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+            # switching from genfromtxt to a more generic implementation...
+            #airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+            airfoildata = [map(float, line.strip().split('\t')) for line in open(c81File)]
+
+
             updateStatus('starting')
             if os.path.isfile(runFileFolder+inUseFile):
                 numworkers = multiprocessing.cpu_count() - 1
             else:
                 numworkers = multiprocessing.cpu_count() * 2
+            numworkers = 1
             workers = [Worker(tasks, results) for i in xrange(numworkers)]
             for w in workers:
                 w.start()
