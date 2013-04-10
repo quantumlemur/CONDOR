@@ -9,10 +9,10 @@ from validate import Validator
 import random
 
 singlefigW = 3.4
-singlefigH = 2.5
+singlefigH = 5.5 # 2.5
 doublefigW = 7
 doublefigH = 5
-figDPI = 600
+figDPI = 300  # change back to 600?
 inline_spacing = 5
 contourfontsize = 6
 titlefontsize = 10
@@ -41,9 +41,9 @@ tickresolution = 1000
 
 
 
-displayPlots = False
-saveData = True
-saveFigures = True
+displayPlots = True
+saveData = False
+saveFigures = False
 annotatePlots = True
 
 plotScalingPlots = False
@@ -101,36 +101,59 @@ def density(altitude):
 
 
 def PerformanceCurve():
+    vconfig = ConfigObj('Config/vehicle_s92.cfg', configspec='Config/vehicle.configspec')
+    vconfig.validate(vvdt)
     v = ConfigObj(vconfig)
     m = ConfigObj(mconfig)
-    v['Simulation']['PowerCurveResolution'] = 1
-    choppah = Vehicle(v, m, 26000, airfoildata)
-    choppah.generatePowerCurve()
-    #choppah.write()
-    Vs = np.array([50.1073, 60.2146, 69.9122, 80.0195, 90.1268, 100.098, 110.205, 120.312, 127.415, 137.249, 144.624, 151.59, 156.644, 163.2, 167.98])
-    Fs = np.array([1240.51, 1156.96, 1113.92, 1096.2, 1103.8, 1129.11, 1177.22, 1240.51, 1301.27, 1410.13, 1518.99, 1655.7, 1772.15, 1972.15, 2134.18])
-    HPs = Fs * 1.3 + (Fs**2*.0002)
-    
+    c81File='Config/%s'%vconfig['Main Rotor']['AirfoilFile']
+    airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+    s92 = Vehicle(v, m, 26000, airfoildata)
+    s92.generatePowerCurve()
+    # v['Simulation']['PowerCurveResolution'] = 1
+    s92_V = np.array([50.1073, 60.2146, 69.9122, 80.0195, 90.1268, 100.098, 110.205, 120.312, 127.415, 137.249, 144.624, 151.59, 156.644, 163.2, 167.98])
+    s92_HP = np.array([1240.51, 1156.96, 1113.92, 1096.2, 1103.8, 1129.11, 1177.22, 1240.51, 1301.27, 1410.13, 1518.99, 1655.7, 1772.15, 1972.15, 2134.18])
+
+    powerSL = np.array(s92.vconfig['Power Curve']['PowersSL'])
+    sfcSL = -0.00001495*powerSL + .4904
+    fuelSL = sfcSL * powerSL
+
     plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
-    plt.plot(choppah.vconfig['Power Curve']['Speeds'], choppah.vconfig['Power Curve']['PowersSL'])
-    plt.plot(choppah.vconfig['Power Curve']['Speeds'], choppah.vconfig['Power Curve']['PowersCruise'])
-    MCPspeeds = [0, 200]
-    mcp = 2043*2
-    mcpalt = mcp*density(10000)/density(0)
-    MCPSL = [mcp, mcp]
-    MCPalt = [mcpalt, mcpalt]
-    plt.plot(MCPspeeds, MCPSL, 'b')
-    plt.plot(MCPspeeds, MCPalt, 'g')
-    plt.plot(Vs, HPs, marker='o', markersize=3, linestyle='')
-    plt.axis([0, 200, 1000, 6000])
-    plt.legend(('Sea Level', '10k ft'), fontsize=labelfontsize)
+    plt.subplot(211)
+    plt.plot(s92.vconfig['Power Curve']['Speeds'], fuelSL)
+    plt.plot(s92_V, s92_HP, marker='o', markersize=3, linestyle='')
+    plt.axis([0, 200, 400, 2600])
+    plt.legend(('Predicted', 'Published'), fontsize=labelfontsize)
     plt.tick_params(labelsize=axislabelfontsize)
     plt.xlabel('Airspeed (kts)', fontsize=labelfontsize)
-    plt.ylabel('Power (hp)', fontsize=labelfontsize)
-    #plt.title('Predicted S-92 Power Curve', fontsize=titlefontsize)
+    plt.ylabel('Fuel flow (lb/hr)', fontsize=labelfontsize)
+    plt.title('S-92', fontsize=titlefontsize)
     plt.tight_layout()
     plt.grid(True)
-    
+
+    plt.subplot(212)
+    vconfig = ConfigObj('Config/vehicle_xh59.cfg', configspec='Config/vehicle.configspec')
+    vconfig.validate(vvdt)
+    v = ConfigObj(vconfig)
+    m = ConfigObj(mconfig)
+    c81File='Config/%s'%vconfig['Main Rotor']['AirfoilFile']
+    airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+    xh59 = Vehicle(v, m, 12500., airfoildata)
+    xh59.generatePowerCurve()
+    xh59.write()
+    plt.plot(xh59.vconfig['Power Curve']['Speeds'], xh59.vconfig['Power Curve']['PowersSL'])
+    xh59_V = np.array([0, 21.966997, 42.561056, 63.471947, 85.122112, 87.762376, 89.663366, 91.669967, 105.927393, 108.567657, 120.712871, 125.887789, 126.627063, 130.112211, 136.765677, 136.554455, 143.841584, 146.481848, 151.339934, 154.719472])
+    xh59_HP = np.array([1414.285714, 1168.163265, 925.714286, 813.673469, 732.857143, 800.816327, 854.081633, 786.122449, 879.795918, 817.346939, 912.857143, 1129.591837, 1050.612245, 1002.857143, 1054.285714, 1206.734694, 1307.755102, 1434.489796, 1520.816327, 1647.55102])
+    plt.plot(xh59_V, xh59_HP, marker='o', markersize=3, linestyle='')
+    plt.axis([0, 160, 600, 2000])
+    plt.legend(('Predicted', 'Published'), fontsize=labelfontsize)
+    plt.tick_params(labelsize=axislabelfontsize)
+    plt.xlabel('Airspeed (kts)', fontsize=labelfontsize)
+    plt.ylabel('HP', fontsize=labelfontsize)
+    plt.title('XH-59', fontsize=titlefontsize)
+    plt.tight_layout()
+    plt.grid(True)
+
+
     if saveFigures: pylab.savefig('Output/Figures/S92PerformanceCurve.png', bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
 
@@ -159,7 +182,7 @@ def ScalingPlots():
     plt.tight_layout()
     if saveFigures: pylab.savefig('Output/Figures/flatPlateDragScaling.png', bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
-    
+
     # engine weight
     plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
     MCP = np.arange(0, 4000, 10)
@@ -203,7 +226,7 @@ def ScalingPlots():
     DL = 10
     labelX = [31000, 31000, 30000]
     labelY = [600, 1200, 1800]
-    for i in xrange(len(SRR)):    
+    for i in xrange(len(SRR)):
         weights[i] = 0.00272*GW**1.4/DL**0.8*SRR[i]**0.8
         plt.plot(GW, weights[i])
         plt.text(labelX[i], labelY[i], r'$\frac{Span}{R}=%d$' % SRR[i], fontsize=labelfontsize)
@@ -220,7 +243,7 @@ def ScalingPlots():
     # SFC
     plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
     gamma = np.arange(.5, 4, .1)
-    SFCfrac = (-0.00932*gamma**2+0.865*gamma+0.445)/(gamma+0.301)  
+    SFCfrac = (-0.00932*gamma**2+0.865*gamma+0.445)/(gamma+0.301)
     plt.plot(gamma, SFCfrac)
     #plt.text(.8, 1.05, r'$\frac{SFC}{SFC_{baseline}}=\frac{-.00932*\gamma^2+.865*\gamma+.445}{\gamma+.301}$', fontsize=labelfontsize+4)
     plt.tick_params(labelsize=axislabelfontsize)

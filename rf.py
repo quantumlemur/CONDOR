@@ -13,15 +13,15 @@ def pvar(locals_, vars_):
 
 
 class SizedVehicle:
-    
+
     def __init__(self, vconfig, mconfig, airfoildata):
         self.vconfig = vconfig
         self.mconfig = mconfig
         self.vconfig['Sizing Results']['SizedGrossWeight'] = float('nan')
 
-        self.airfoildata = airfoildata 
+        self.airfoildata = airfoildata
 
-    
+
     def sizeMission(self):
         """This is the new sizing routine.  It uses bracketing to narrow the tolerances
         of the GW solution until it is found to be within the specified accuracy.  Should
@@ -98,7 +98,7 @@ if __name__ == '__main__':
     from validate import Validator
     import numpy as np
     v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
-    m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
+    m = ConfigObj('Config/AHS_mission1.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
     v.validate(vvdt)
     mvdt = Validator()
