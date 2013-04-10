@@ -1,4 +1,5 @@
 import math
+import time
 from vehicle import Vehicle
 from configobj import ConfigObj
 
@@ -12,13 +13,15 @@ def pvar(locals_, vars_):
 
 
 class SizedVehicle:
-    
-    def __init__(self, vconfig, mconfig):
+
+    def __init__(self, vconfig, mconfig, airfoildata):
         self.vconfig = vconfig
         self.mconfig = mconfig
         self.vconfig['Sizing Results']['SizedGrossWeight'] = float('nan')
 
-    
+        self.airfoildata = airfoildata
+
+
     def sizeMission(self):
         """This is the new sizing routine.  It uses bracketing to narrow the tolerances
         of the GW solution until it is found to be within the specified accuracy.  Should
@@ -29,51 +32,63 @@ class SizedVehicle:
         GWmin = v['Simulation']['GWMin']
         GWmax = v['Simulation']['GWmax']
         viableCandidate = False
-        GW = (GWmax - GWmin) / 2 + GWmin
-        choppah = Vehicle(v, m, GW) # http://www.youtube.com/watch?v=Xs_OacEq2Sk
+        goodAbove = False
+        GW = (GWmax + GWmin) / 2
+        choppah = Vehicle(v, m, GW, self.airfoildata) # http://www.youtube.com/watch?v=Xs_OacEq2Sk
         choppah.flyMission()
-        while not (GWmax-GWmin<choppah.vconfig['Simulation']['GWTolerance']) and steps<choppah.vconfig['Simulation']['MaxSteps']:
+        while steps<choppah.vconfig['Simulation']['MaxSteps'] and (GWmax-GWmin)>choppah.vconfig['Simulation']['GWTolerance']:
             # Depending on whether we're oversized or undersized for the mission, adjust our GW limits accordingly
-            if choppah.misSize < 0: # lower the max if we're either too heavy to trim or if we're trimmed but oversized for the mission
-                # here we are undersized and trimmable, and will increase the GW minimum
-                GWmin = GW
-            else:
-                # here we are oversized or untrimmable, and will decrease the GW maximum
-                GWmax = GW
-                if choppah.vconfig['Sizing Results']['CouldTrim']: # if we're oversized but trimmable, then we know we have a viable candidate
+            if choppah.vconfig['Sizing Results']['CouldTrim']:
+                if choppah.misSize > 0: # we can trim and we're too big
+                    GWmax = GW
+                    goodAbove = choppah
                     viableCandidate = True
+                else: # we can trim and we're too small
+                    GWmin = GW
+            else: # if we can't trim the current candidate
+                if goodAbove: # we can't trim but we could when we were heavier
+                    GWmin = GW
+                else: # we can't trim and we never could
+                    GWmax = GW
             GW = (GWmax - GWmin) / 2 + GWmin
-            choppah = Vehicle(v, m, GW)
+            choppah = Vehicle(v, m, GW, self.airfoildata)
             choppah.flyMission()
             steps += 1
+            #if math.isnan(choppah.misSize) and choppah.vconfig['Weights']['MaxAvailableFuelWeight']<0:
+            #    break
             if debug:
                 couldTrim = choppah.vconfig['Sizing Results']['CouldTrim']
                 couldMission = choppah.misSize > 0
-                ms = 0 if math.isnan(choppah.misSize) else choppah.misSize
-                pvar(locals(), ('steps', 'GWmax', 'GW', 'GWmin', 'couldTrim', 'couldMission', 'ms', 'viableCandidate'))
+                ms = 99999999999999 if math.isnan(choppah.misSize) else choppah.misSize
+                gA = goodAbove is not False
+                gAW = goodAbove.vconfig['Sizing Results']['GrossWeight'] if goodAbove else -999999999
+                pvar(locals(), ('steps', 'GWmax', 'GW', 'GWmin', 'couldTrim', 'couldMission', 'ms', 'viableCandidate', 'gA', 'gAW'))
         stopReason = ''
         goodRun = False
-        if not viableCandidate:
-            stopReason = 'Cound not trim at all conditions at any mission-capable weight'
-        elif steps >= choppah.vconfig['Simulation']['MaxSteps']:
-            stopReason = 'MaxSteps reached before convergance.  Stopped with bounds: %f  to  %f' % (GWmin, GWmax)
-        elif (GWmax-GWmin <= choppah.vconfig['Simulation']['GWTolerance']) and choppah.vconfig['Sizing Results']['CouldTrim']:
-            stopReason = 'Converged to within specified tolerances'
-            goodRun = True
-        else:
-            stopReason = 'Stopped with some other reason'
-        choppah.vconfig['Sizing Results']['StopReason'] = stopReason
-        choppah.vconfig['Sizing Results']['GoodRun'] = goodRun
-        if goodRun:
-            choppah.vconfig['Sizing Results']['Optimized'] = True
-            choppah.vconfig['Sizing Results']['SizedGrossWeight'] = GW
-        else:
-            choppah.vconfig['Sizing Results']['Optimized'] = False
-            choppah.vconfig['Sizing Results']['SizedGrossWeight'] = float('nan')
-        if debug: print('Optimized: %s     %s' % (goodRun, stopReason))
-        if writeOutput: choppah.write()
-        self.vconfig = choppah.vconfig
-        self.mconfig = choppah.mconfig
+        if not (choppah.vconfig['Sizing Results']['CouldTrim'] and choppah.misSize>0):
+            choppah = goodAbove
+        if choppah:
+            if not choppah.vconfig['Sizing Results']['CouldTrim']:
+                stopReason = 'Cound not trim at all conditions at any mission-capable weight'
+            elif choppah.vconfig['Weights']['MaxAvailableFuelWeight'] < 0:
+                stopReason = 'Negative calculated max fuel weight'
+            elif steps >= choppah.vconfig['Simulation']['MaxSteps']:
+                stopReason = 'MaxSteps reached before convergance.  Stopped with bounds: %f  to  %f' % (GWmin, GWmax)
+            elif (GWmax-GWmin <= choppah.vconfig['Simulation']['GWTolerance']):
+                stopReason = 'Converged to within specified tolerances'
+                goodRun = True
+            else:
+                stopReason = 'Stopped with some other reason'
+            choppah.vconfig['Sizing Results']['StopReason'] = stopReason
+            choppah.vconfig['Sizing Results']['GoodRun'] = goodRun
+            if goodRun:
+                choppah.vconfig['Sizing Results']['Optimized'] = True
+                choppah.vconfig['Sizing Results']['SizedGrossWeight'] = GW
+            else:
+                choppah.vconfig['Sizing Results']['Optimized'] = False
+                choppah.vconfig['Sizing Results']['SizedGrossWeight'] = float('nan')
+            if debug: print('Optimized: %s     %s' % (goodRun, stopReason))
+            if writeOutput: choppah.write()
         return choppah
 
 if __name__ == '__main__':
@@ -81,15 +96,19 @@ if __name__ == '__main__':
     from time import clock
     from configobj import ConfigObj
     from validate import Validator
-    startTime = clock()
+    import numpy as np
     v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
-    m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
+    m = ConfigObj('Config/AHS_mission1.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
     v.validate(vvdt)
     mvdt = Validator()
     m.validate(mvdt)
-    blah = SizedVehicle(v, m)
+    startTime = clock()
+    c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
+    airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+    blah = SizedVehicle(v, m, airfoildata)
     veh = blah.sizeMission()
+    if veh: veh.write()
     stopTime = clock()
     elapsed = stopTime - startTime
     if debug: print('Elapsed time: %f' % elapsed)

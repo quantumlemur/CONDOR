@@ -10,11 +10,43 @@ from rf import SizedVehicle
 from configobj import ConfigObj
 from validate import Validator
 
-runTime = 15*60*60 # on my computer, I run about 25 cases/minute, or 1500/hour, and seem to get about 1 good case per minute out of it
 
-inputs = (('Wing', 'SpanRadiusRatio'), ('Wing', 'WingAspectRatio'), ('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'TaperRatio'), ('Main Rotor', 'TipTwist'), ('Main Rotor', 'Radius'), ('Main Rotor', 'TipSpeed'), ('Main Rotor', 'RootChord'), ('Main Rotor', 'NumBlades'))
-inputRanges = ((0., 4.), (3., 9.), (0, 1), (.6, 1.), (-16, -4), (15., 35.), (400., 800.), (.5, 3.), (2, 6))
+inputs = (('Aux Propulsion', 'NumAuxProps'), ('Wing', 'SpanRadiusRatio'), ('Main Rotor', 'DiskLoading'), ('Main Rotor', 'Solidity'), ('Main Rotor', 'TipSpeed'))
+inputRanges = ((1, 1), (0., 4.), (2., 30.), (.05, .15), (400., 800.))
 
+missionInputs = (('Segment 2', 'Distance'), ('Segment 2', 'Speed'))
+missionInputRanges = ((300., 1000.), (150., 300.))
+
+
+if os.getcwd().split(os.sep)[-1] == 'CONDOR':
+    runFileFolder = 'Output/RunFiles/'
+    outputFolder = 'Output/'
+else:
+    runFileFolder = '../CONDOR/Output/RunFiles/'
+    outputFolder = '../CONDOR/Output/'
+idleFile = 'AAA_Keep_Idling_ALL'
+activelyRunFile = 'AAA_Computations_Active_ALL'
+killFilePrefix = 'AAAA_FORCEKILL_'
+forceIdleFilePrefix = 'AAAA_FORCEIDLE_'
+inUseFilePrefix = 'AAAA_InUse_'
+
+
+idleSleepTime = 10
+minRunFileUpdateTime = 60 # minimum number of seconds between runfile updates
+
+lastRunFileUpdateTime = 0
+startTime = time.time() - 1 # subtract one second so we don't divide by zero on the first update
+
+computerName = ''
+try:
+    computerName = os.uname()[1]
+except:
+    computerName = os.environ['COMPUTERNAME']
+runFile = '%s%s %s' % (runFileFolder, computerName, 'quit')
+killFile = killFilePrefix + computerName
+forceIdleFile = forceIdleFilePrefix + computerName
+inUseFile = inUseFilePrefix + computerName
+lastState = 'quit'
 
 class Worker(multiprocessing.Process):
     
@@ -34,9 +66,10 @@ class Worker(multiprocessing.Process):
             self.results.put(flatdict)
 
 class Task(object):
-    def __init__(self, vconfig, mconfig):
+    def __init__(self, vconfig, mconfig, airfoildata):
         self.vconfig = vconfig
         self.mconfig = mconfig
+        self.airfoildata = airfoildata
     def __call__(self):
         vconfig = ConfigObj(self.vconfig)
         mconfig = ConfigObj(self.mconfig)
@@ -46,19 +79,26 @@ class Task(object):
             else:
                 val = random.uniform(inputRanges[i][0], inputRanges[i][1])
             vconfig[inputs[i][0]][inputs[i][1]] = val
-        vehicle = SizedVehicle(vconfig, mconfig)
-        sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object
-        sizedVehicle.generatePowerCurve()
-        sizedVehicle.findHoverCeiling()
-        sizedVehicle.findMaxRange()
-        sizedVehicle.findMaxSpeed()
-        v = sizedVehicle.vconfig
-        flatdict = {}
-        def flatten(section, key):
-            if section.name not in ['Condition', 'Trim Failure']:
-                flatdict[key] = section[key]
-        v.walk(flatten)
-        if flatdict['GoodRun']:
+        for i in xrange(len(missionInputs)):
+            if type(mconfig[missionInputs[i][0]][missionInputs[i][1]]) is int:
+                val = random.randint(missionInputRanges[i][0], missionInputRanges[i][1])
+            else:
+                val = random.uniform(missionInputRanges[i][0], missionInputRanges[i][1])
+            mconfig[missionInputs[i][0]][missionInputs[i][1]] = val
+        vehicle = SizedVehicle(vconfig, mconfig, self.airfoildata)
+        sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object, or False if it wasn't able to converge properly.
+        if sizedVehicle:
+            sizedVehicle.generatePowerCurve()
+            sizedVehicle.findHoverCeiling()
+            sizedVehicle.findMaxRange()
+            sizedVehicle.findMaxSpeed()
+            v = sizedVehicle.vconfig
+            flatdict = {}
+            def flatten(section, key):
+                if section.name not in ['Condition', 'Trim Failure', 'Simulation']:
+                    flatdict[key] = section[key]
+            v.walk(flatten)
+            flatdict['COMPUTERNAME'] = computerName
             return flatdict
         else:
             return None
@@ -82,57 +122,113 @@ def fmtTime(total):
     seconds = (int) (total - hours*60*60 - minutes*60)
     return '%02d:%02d:%02d' % (hours, minutes, seconds)
 
+def updateStatus(state, goodRows=0, totalRows=0, outstandingTasks=1):
+    global runFile
+    global startTime
+    global lastRunFileUpdateTime
+    global computerName
+    global minRunFileUpdateTime
+    elapsedTime = time.time() - startTime
+    if state == 'starting':
+        status = 'starting'
+    elif state == 'idling':
+        status = 'idling'
+    elif state == 'running':
+        status = 'running        %dg        %dt        %dgph        %dtph' % (goodRows, totalRows, goodRows/elapsedTime*60*60, totalRows/elapsedTime*60*60)
+    elif state == 'stopping':
+        status = 'stopping        %d tasks remaining' % (outstandingTasks)
+    elif state == 'quit':
+        status = 'quit'
+    statusLine = '%-20s %-60s %30s' % (computerName, status, time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime()))
+    print(statusLine)
+    updateElapsedTime = time.time() - lastRunFileUpdateTime
+    if updateElapsedTime>minRunFileUpdateTime or lastState!=state:
+        if os.path.isfile(runFile): os.remove(runFile)
+        runFile = '%s%s %s' % (runFileFolder, computerName, status)
+        with open(runFile, 'w') as f: f.write('blah')
+        lastRunFileUpdateTime = time.time()
+
+
+
+
+
 if __name__ == '__main__':
-    startTime = time.clock()
-    v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
-    m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
-    vvdt = Validator()
-    v.validate(vvdt)
-    mvdt = Validator()
-    m.validate(mvdt)
+
     tasks = multiprocessing.JoinableQueue()
     results = multiprocessing.Queue()
-    numworkers = multiprocessing.cpu_count() * 2
-    workers = [Worker(tasks, results) for i in xrange(numworkers)]
-    for w in workers:
-        w.start()
+    if not os.path.isfile(runFileFolder + idleFile):
 
-    # find our output file name
-    fnum = 0
-    while os.path.isfile('Output/designSpace_%d.csv' % fnum):
-        fnum += 1
-    fileName = 'Output/designSpace_%d.csv' % fnum
-    startTime = time.time()
-    endTime = startTime + runTime
-    # keep looping until we actually get our first real result
-    gotKeys = False
-    goodRows = 0
-    outstandingTasks = 1
-    tasks.put(Task(v, m))
-    with open(fileName, 'wb') as f:
-        while outstandingTasks > 0:
-            showProgress('%d good results, %d outstanding tasks' % (goodRows, outstandingTasks), startTime, time.time(), endTime)
-            if outstandingTasks<multiprocessing.cpu_count()*2 and time.time()<endTime:
-                for i in xrange(multiprocessing.cpu_count()):
-                    tasks.put(Task(v, m))
-                    outstandingTasks += 1
-            flatdict = results.get()
-            outstandingTasks -= 1
-            if flatdict is not None:
-                goodRows += 1
-                if gotKeys:
-                    writer.writerow(flatdict)
-                else:
-                    keys = flatdict.keys()
-                    writer = csv.DictWriter(f, keys, delimiter=',')
-                    writer.writerow({key:key for key in keys})
-                    writer.writerow(flatdict)
-                    f.flush()
-                    gotKeys = True
-    for i in xrange(numworkers):
-        tasks.put(None)
+        print('idleFile not found, so I will not run!  Create the file %s%s to keep idling, plus %s%s to run.' % (runFileFolder, idleFile, runFileFolder, activelyRunFile))
+
+    while os.path.isfile(runFileFolder+idleFile) and not os.path.isfile(runFileFolder + killFile):
+        if os.path.isfile(runFileFolder+activelyRunFile) and not os.path.isfile(runFileFolder+killFile)  and not os.path.isfile(runFileFolder+forceIdleFile):
+            v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
+            m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
+            vvdt = Validator()
+            v.validate(vvdt)
+            mvdt = Validator()
+            m.validate(mvdt)
+            c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
+            airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+            updateStatus('starting')
+            if os.path.isfile(runFileFolder+inUseFile):
+                numworkers = multiprocessing.cpu_count() - 1
+            else:
+                numworkers = multiprocessing.cpu_count() * 2
+            workers = [Worker(tasks, results) for i in xrange(numworkers)]
+            for w in workers:
+                w.start()
+
+            # find our output file name
+            fnum = 0
+            fileNameTemplate = outputFolder + 'designSpace_%s_%d.csv'
+            fileName = fileNameTemplate % (computerName, fnum)
+            while os.path.isfile(fileName):
+                fnum += 1
+                fileName = fileNameTemplate % (computerName, fnum)
+            startTime = time.time() - 1 # minus one second so that we don't divide by zero on the first loop
+            # keep looping until we actually get our first real result
+            gotKeys = False
+            goodRows = 0
+            totalRows = 0
+            keepRunning = True
+            outstandingTasks = 1
+            tasks.put(Task(v, m, airfoildata))
+            with open(fileName, 'wb') as f:
+                while outstandingTasks>0:
+                    # check if we should stop
+                    if os.path.isfile(runFileFolder+killFile) or os.path.isfile(runFileFolder+forceIdleFile) or not os.path.isfile(runFileFolder+activelyRunFile): keepRunning = False
+                    # add tasks to the queue if we're running low
+                    if outstandingTasks<numworkers and keepRunning:
+                        for i in xrange(numworkers):
+                            tasks.put(Task(v, m, airfoildata))
+                            outstandingTasks += 1
+                    # update status output
+                    updateStatus('running' if keepRunning else 'stopping', goodRows, totalRows, outstandingTasks=outstandingTasks)
+                    # get a results
+                    flatdict = results.get()
+                    outstandingTasks -= 1
+                    totalRows += 1
+                    # write out result if it's good
+                    if flatdict is not None:
+                        goodRows += 1
+                        if gotKeys:
+                            writer.writerow(flatdict)
+                        else:
+                            keys = flatdict.keys()
+                            writer = csv.DictWriter(f, keys, delimiter=',')
+                            writer.writerow({key:key for key in keys})
+                            writer.writerow(flatdict)
+                            f.flush()
+                            gotKeys = True
+            for i in xrange(numworkers):
+                tasks.put(None)
+        updateStatus('idling')
+        time.sleep(idleSleepTime)
+
     # join/close the tasks queue
     tasks.join()
+    updateStatus('quit')
 
     # print 'Writing out the data!'
     #     for i in xrange(len(output[keys[0]])):

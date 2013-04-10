@@ -12,11 +12,12 @@ def pvar(locals_, vars_):
     print '     '.join(s)
 
 class Vehicle:
-    
-    def __init__(self, vconfig, mconfig, GW):
+
+    def __init__(self, vconfig, mconfig, GW, airfoildata):
         self.vconfig = ConfigObj(vconfig)
         self.mconfig = ConfigObj(mconfig)
         self.GW = GW
+        self.airfoildata = airfoildata
         self.setup()
 
     def setup(self):
@@ -24,61 +25,88 @@ class Vehicle:
         m = self.mconfig
         GW = self.GW
         self.misSize = float('nan')
+
+        # Engine scaling
+        v['Condition']['CruiseAltitude'] = m['Segment 2']['Altitude']
+        v['Engine Scaling']['RequiredHoverHeight'] = m['Segment 1']['Altitude']
+        v['Wing']['MaxSpeed'] = m['Segment 2']['Speed']
+
+        v['Performance']['IngressSpeed'] = m['Segment 2']['Speed']
+        v['Performance']['Missionange'] = m['Segment 2']['Distance']
+
+        v['Performance']['MaxBladeLoadingSeen'] = 0.
+
         v['Body']['FlatPlateDrag'] = 0.25 * GW**.5 * (1-v['Body']['DragTechImprovementFactor']) #0.015 * GW**0.67 # flat plate drag area
+        v['Main Rotor']['Radius'] = math.sqrt(GW / (math.pi * v['Main Rotor']['DiskLoading'] * v['Main Rotor']['NumRotors']))
         v['Main Rotor']['Omega'] = v['Main Rotor']['TipSpeed'] / v['Main Rotor']['Radius']
         v['Main Rotor']['DiskArea'] = math.pi * v['Main Rotor']['Radius']**2 * v['Main Rotor']['NumRotors']
-        v['Main Rotor']['DiskLoading'] = GW / v['Main Rotor']['NumRotors'] / v['Main Rotor']['DiskArea']
+        v['Main Rotor']['AverageChord'] = v['Main Rotor']['DiskArea']*v['Main Rotor']['Solidity'] / (v['Main Rotor']['Radius']*(1-v['Main Rotor']['RootCutout'])*v['Main Rotor']['NumBlades'])
         v['Wing']['WingSpan'] = v['Main Rotor']['Radius'] * v['Wing']['SpanRadiusRatio']
-        v['Wing']['WingArea'] = v['Wing']['WingSpan']**2 / v['Wing']['WingAspectRatio']
-        
-        v['Weights']['EmptyWeight'] = GW * v['Weights']['BaselineEmptyWeightFraction']
+        v['Wing']['WingArea'] = v['Wing']['WingSpan'] * v['Wing']['WingChord']
+        v['Wing']['WingAspectRatio'] = v['Wing']['WingSpan'] / v['Wing']['WingChord']
+
+        #v['Weights']['EmptyWeight'] = GW * v['Weights']['BaselineEmptyWeightFraction']
         v['Sizing Results']['GrossWeight'] = GW
         v['Sizing Results']['CouldTrim'] = True
         v['Sizing Results']['MisSize'] = float('nan')
         v['Sizing Results']['Nothing'] = 0.
-        
-        self.blade = Blade(c81File='Config/%s'%v['Main Rotor']['AirfoilFile'], skip_header=0, skip_footer=0, rootChord=v['Main Rotor']['RootChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout']/v['Main Rotor']['Radius'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
+        v['Performance']['Nothing'] = 0.
+
+        # adjustments and tweaks based on configuration
+        if v['Main Rotor']['NumRotors'] == 2:
+            v['Antitorque']['AntitorquePowerFactor'] = 0.
+            v['Powerplant']['TransmissionEfficiency'] = .08
+            v['Weights']['BaselineEmptyWeightFraction'] = v['Weights']['BaselineEmptyWeightFraction'] * 1.05
+            v['Body']['FlatPlateDrag'] = v['Body']['FlatPlateDrag'] * 1.1
+
+
+        self.blade = Blade(airfoildata=self.airfoildata, skip_header=0, skip_footer=0, averageChord=v['Main Rotor']['AverageChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
         self.rotor = Rotor(self.blade, psiSegments=v['Simulation']['numBladeElementSegments'], Vtip=v['Main Rotor']['TipSpeed'], radius=v['Main Rotor']['Radius'], numblades=v['Main Rotor']['NumBlades'])
-        v['Main Rotor']['Solidity'] = self.rotor.solidity
         self.scaleEngine()
         self.scaleWeights()
         self.setMission(m)
-        
+
 
     def scaleWeights(self):
         v = self.vconfig
         w = v['Weights']  # shorthand
-        
+
         # calculation of baseline weight breakdown
         baselineEmptyWeight = w['BaselineEmptyWeight']
         baselineGrossWeight = w['BaselineGrossWeight']
         baselineEngineWeight = w['NumEngines']*w['BaselineWeightPerEngine']
         baselineDriveSystemWeight = w['BaselineWeightPerEngine']*w['BaselineDriveSystemWeightScalingFactor']
         baselineStructureWeight = baselineEmptyWeight - baselineEngineWeight - baselineDriveSystemWeight
-        
+
         # calculation of baseline empty weight fractions
         baselineEmptyWeightFraction = baselineEmptyWeight / baselineGrossWeight
         baselineEngineWeightFraction = baselineEngineWeight / baselineGrossWeight
         baselineDriveSystemWeightFraction = baselineDriveSystemWeight / baselineGrossWeight
         baselineStructureWeightFraction = baselineStructureWeight / baselineGrossWeight
         improvedStructureWeightFraction = baselineStructureWeightFraction * (1-w['StructureWeightTechImprovementFactor'])
-        
+
         # weight scaling
         MCP = v['Powerplant']['MRP'] / 1.3
         scaledEngineWeight = w['NumEngines']*((0.1054*(MCP/w['NumEngines'])**2.+358*(MCP/w['NumEngines'])+2.757*10.**4.)/((MCP/w['NumEngines'])+1180))
-        scaledDriveSystemWeight = (525.*(self.GW/1000.)**1.14)/((self.GW/MCP)**0.763*v['Main Rotor']['DiskLoading']**0.381)
-        scaledWingWeight = 0.00272*self.GW**1.4/v['Main Rotor']['DiskLoading']**0.8*v['Wing']['SpanRadiusRatio']**0.8
+        try:
+            scaledDriveSystemWeight = (525.*(self.GW/1000.)**1.14)/((self.GW/MCP)**0.763*v['Main Rotor']['DiskLoading']**0.381)
+        except:
+            scaledDriveSystemWeight = 999999999.
+            print scaledDriveSystemWeight
+            print MCP
+        scaledWingWeight = 0.00272*self.GW**1.4/v['Main Rotor']['DiskLoading']**0.8*v['Wing']['SpanRadiusRatio']**0.8 * 0.8
         scaledStructureWeight = improvedStructureWeightFraction * self.GW
-        
+
         v['Weights']['scaledEngineWeight'] = scaledEngineWeight * (1-v['Weights']['EngineWeightTechImprovementFactor'])
         v['Weights']['scaledDriveSystemWeight'] = scaledDriveSystemWeight * (1-v['Weights']['DriveSystemWeightTechImprovementFactor'])
         v['Weights']['scaledWingWeight'] = scaledWingWeight * (1-v['Weights']['WingWeightTechImprovementFactor'])
         v['Weights']['scaledStructureWeight'] = scaledStructureWeight * (1-v['Weights']['StructureWeightTechImprovementFactor'])
-        
+
         # output
-        v['Weights']['EmptyWeightFraction'] = (scaledEngineWeight + scaledDriveSystemWeight + scaledWingWeight + scaledStructureWeight) / self.GW
+        v['Weights']['EmptyWeightFraction'] = 0.52 # (scaledEngineWeight + scaledDriveSystemWeight + scaledWingWeight + scaledStructureWeight) / self.GW
         v['Weights']['EmptyWeight'] = v['Weights']['EmptyWeightFraction'] * self.GW
-    
+        v['Weights']['MaxAvailableFuelWeight'] = self.GW - v['Weights']['EmptyWeight'] #- v['Weights']['UsefulLoad']
+
     def setMission(self, mconfig):
         """This function sets the mission and analyzes all the mission segments, fleshing them out with some calculated values"""
         self.mconfig = mconfig
@@ -88,6 +116,8 @@ class Vehicle:
         segment = 1
         numsegs = 0
         prevLoad = 0
+        maxLoad = 0
+        totalRange = 0
         while 'Segment %s' % segment in m:
             seg = 'Segment %s' % segment
             m[seg]['Time'] = m[seg]['Distance'] / m[seg]['Speed'] * 60 # time in minutes
@@ -97,18 +127,22 @@ class Vehicle:
             m[seg]['Density'] = self.density(m[seg]['Altitude'])
             m[seg]['DensityRatio'] = m[seg]['Density'] / self.density(0)
             load = m[seg]['CrewWeight'] + m[seg]['PayloadWeight'] + m[seg]['MiscWeight']
+            maxLoad = max(maxLoad, load)
+            totalRange += m[seg]['Distance']
             m[seg]['DeltaLoad'] = load - prevLoad
             prevLoad = load
             segment += 1
             numsegs += 1
+        v['Sizing Results']['TotalRange'] = totalRange
+        v['Sizing Results']['Payload'] = m['Segment 2']['PayloadWeight']
+        v['Sizing Results']['TotalWeight'] = float('nan')
+        v['Sizing Results']['FuelUsedLb'] = float('nan')
+        m['MaxLoad'] = maxLoad
         m['TotalTime'] = totaltime
         m['NumSegments'] = numsegs
 
     def generatePowerCurve(self):
-        m = self.mconfig
         v = self.vconfig
-        seg = 'Segment 1'
-        MR = v['Main Rotor'] # shorthand
         v['Condition']['Weight'] = self.GW
         speeds = [0]
         powersSL = []
@@ -118,13 +152,14 @@ class Vehicle:
         v['Condition']['Speed'] = speeds[0]
         powersSL.append(self.powerReq())
         # Do the sea level sweep
-        while not math.isnan(powersSL[-1]):
+        while (not math.isnan(powersSL[-1])) or speeds[-1]<200:
             speed = speeds[-1] + v['Simulation']['PowerCurveResolution']
             v['Condition']['Speed'] = speed
             v['Condition']['Density'] = self.density(0) # SL
-            powersSL.append(float('nan')) #self.powerReq())
+            powersSL.append(self.powerReq()) # float('nan')
             powersCruise.append(float('nan'))
             speeds.append(speed)
+            print speed
         # Find cruise hover power and start out the array
         v['Condition']['Density'] = self.density(v['Condition']['CruiseAltitude']) # 10k ft
         v['Condition']['Speed'] = speeds[0]
@@ -143,28 +178,36 @@ class Vehicle:
                 powersSL.append(float('nan'))
                 powersCruise.append(power)
             i += 1
+            print speed
         # Store the power curves
         v['Power Curve']['Speeds'] = speeds
         v['Power Curve']['PowersCruise'] = powersCruise
         v['Power Curve']['PowersSL'] = powersSL
-    
+
     def findHoverCeiling(self):
         v = self.vconfig
-        m = self.mconfig
-        powerAvailable = 999999
-        powerRequired = 0
-        altitude = 0
+        HCmax = v['Simulation']['HoverCeilingMax']
+        HCmin = v['Simulation']['HoverCeilingMin']
+        altitude = (HCmax + HCmin) / 2
+        steps = 0
         v['Condition']['Weight'] = self.GW
         v['Condition']['Speed'] = 0.
-        while (powerAvailable>powerRequired) and (not math.isnan(powerRequired)):
-            altitude += v['Simulation']['HoverCeilingResolution']
+        while steps<v['Simulation']['MaxSteps'] and (HCmax-HCmin)>v['Simulation']['HoverCeilingTolerance'] :
             v['Condition']['Density'] = self.density(altitude)
             powerRequired = self.powerReq()
             powerAvailable = self.powerAvailable(altitude)
+            if debug: pvar(locals(), ('HCmin', 'altitude', 'HCmax', 'powerRequired', 'powerAvailable'))
+            if math.isnan(powerRequired) or powerRequired>powerAvailable:
+                HCmax = altitude
+            else:
+                HCmin = altitude
+            altitude = (HCmax + HCmin) / 2
         v['Performance']['HoverCeiling'] = altitude
-    
+
     def density(self, altitude):
+        # look at costello notes, RotorcraftPerformance, p.6 for better equation
         return 5e-13*altitude**2 - 7e-8*altitude + .0024 # ISA+15C?
+
 
     def powerAvailable(self, altitude):
         return self.vconfig['Powerplant']['MCP'] * self.density(altitude) / self.density(0)#(-2e-5*altitude + 1)
@@ -173,10 +216,11 @@ class Vehicle:
         """Returns SFC at a given output power."""
         v = self.vconfig
         # TODO:  Insert partial-power SFC
-        return v['Powerplant']['SFC']
-        #return -0.00001495*power + .4904 # right now this is the GE CT7-8 engine, in the S-92.  Put it back to a generic scaling using v['Powerplant']['SFC'] !
-    
+        #return v['Powerplant']['SFC']
+        return -0.00001495*power + .4904 # right now this is the GE CT7-8 engine, in the S-92.  Put it back to a generic scaling using v['Powerplant']['SFC'] !
+
     def speedOfSound(self, density):
+        # look at costello notes, RotorcraftPerformance, p.7 for better equation
         return 1026. # yeah... replace this with an equation
 
     def findMaxRange(self):
@@ -194,9 +238,8 @@ class Vehicle:
                 POWERmaxr = powers[i]
         if debug:  print speeds
         if debug:  print powers
-        fuelweight = self.GW - (v['Weights']['EmptyWeightFraction']*self.GW + v['Weights']['UsefulLoad'])
+        fuelweight = self.GW - v['Weights']['EmptyWeightFraction']*self.GW - v['Weights']['UsefulLoad']
         hourstoempty = fuelweight / (self.SFC(POWERmaxr) * POWERmaxr)
-        v['Weights']['MaxAvailableFuelWeight'] = fuelweight
         v['Performance']['MaxRange'] = hourstoempty * SPEEDmaxr
         v['Performance']['MaxRangeSpeed'] = SPEEDmaxr
         v['Performance']['PowerAtMaxRangeSpeed'] = POWERmaxr
@@ -219,42 +262,62 @@ class Vehicle:
     def scaleEngine(self):
         """Scales the engine for high hot hover and fast cruise."""
         v = self.vconfig
-        altitude = 6000.
-        v['Condition']['Weight'] = self.GW
-        v['Condition']['Density'] = self.density(altitude)
-        v['Condition']['Speed'] = 0 # hover
-        hoverpower = self.powerReq()
-        if math.isnan(hoverpower):
-            self.recordTrimFailure()
-        hoverpower = hoverpower * self.density(0) / self.density(altitude) # scale engine to sea level
-        v['Engine Scaling']['HoverPower'] = hoverpower
-        
-        v['Condition']['Weight'] = self.GW
-        altitude = 13000.
-        v['Condition']['Density'] = self.density(altitude) #0.001207 # 20k 95f
-        v['Condition']['Speed'] = v['Wing']['MaxSpeed'] # Max speed
-        cruisepower = self.powerReq()
-        if math.isnan(cruisepower):
-            self.recordTrimFailure()
-        cruisepower = cruisepower * self.density(0) / self.density(altitude) # scale engine to sea level
-        v['Engine Scaling']['CruisePower'] = cruisepower
-        
-        power = max(hoverpower, cruisepower)
+        altitude = v['Engine Scaling']['RequiredHoverHeight']
+        # v['Condition']['Weight'] = self.GW
+        # v['Condition']['Density'] = self.density(altitude)
+        # v['Condition']['Speed'] = 0 # hover
+        # hoverpower = self.powerReq()
+        # if math.isnan(hoverpower):
+        #     self.recordTrimFailure()
+        #     hoverpower = 1.
+        # v['Engine Scaling']['HoverPowerAtAlt'] = hoverpower
+        # hoverpower = hoverpower * self.density(0) / self.density(altitude) # scale engine to sea level
+        # v['Engine Scaling']['HoverPower'] = hoverpower
+        hoverpower = 1.
+
+        # v['Condition']['Weight'] = self.GW
+        # altitude = 13000.
+        # v['Condition']['Density'] = self.density(altitude)
+        # v['Condition']['Speed'] = v['Wing']['MaxSpeed'] / 2. # 1/2 of max speed
+        # ceilingpower = self.powerReq()
+        # if math.isnan(ceilingpower):
+        #     self.recordTrimFailure()
+        #     ceilingpower = 1.
+        # ceilingpower = ceilingpower * self.density(0) / self.density(altitude) # scale engine to sea level
+        # v['Engine Scaling']['CeilingPower'] = ceilingpower
+        ceilingpower = 1.
+
+        # v['Condition']['Weight'] = self.GW
+        # altitude = v['Condition']['CruiseAltitude']
+        # v['Condition']['Density'] = self.density(altitude)
+        # v['Condition']['Speed'] = v['Wing']['MaxSpeed']
+        # cruisepower = self.powerReq()
+        # if math.isnan(cruisepower):
+        #     self.recordTrimFailure()
+        #     cruisepower = 1.
+        # cruisepower = cruisepower * self.density(0) / self.density(altitude) # scale engine to sea level
+        # v['Engine Scaling']['CruisePower'] = cruisepower
+
+        # power = max(hoverpower, ceilingpower, cruisepower)
+        power = 6000
         gamma = power / self.vconfig['Powerplant']['BaselineMRP']
         sfc = (-0.00932*gamma**2+0.865*gamma+0.445)/(gamma+0.301)*v['Powerplant']['BaselineSFC']
-        
+
+
         v['Powerplant']['MRP'] = power * 1.3
-        v['Powerplant']['MCP'] = power 
+        v['Powerplant']['MCP'] = power
         v['Powerplant']['SFC'] = sfc * (1-v['Powerplant']['SFCTechImprovementFactor'])
-    
+
     def flyMission(self):
         m = self.mconfig
         v = self.vconfig
+        v['Sizing Results']['MisSize'] = float('nan')
+        if v['Weights']['EmptyWeightFraction']>1 or v['Weights']['MaxAvailableFuelWeight']<0 or not v['Sizing Results']['CouldTrim'] :
+            return
         elapsed = 0 # elapsed time since mission start
         fuelAvailable = self.GW - v['Weights']['EmptyWeight'] - v['Weights']['UsefulLoad'] # total fuel weight available, pounds
         w = v['Weights']['EmptyWeight'] + fuelAvailable
         totalFuel = 0.
-        MR = v['Main Rotor'] # shorthand
         # step through all the segments specified in the mission file
         for i in range(0, m['NumSegments']):
             seg = 'Segment %d' % (i+1)
@@ -283,6 +346,10 @@ class Vehicle:
             if debug: print('%s RfR: %.3f' % (seg, totalFuel/self.GW))
         self.misSize = fuelAvailable - totalFuel
         if debug: print 'Finished!  Total fuel used: %s     Missize amount: %s' % (totalFuel, self.misSize)
+        v['Sizing Results']['FuelUsedLb'] = totalFuel
+        v['Sizing Results']['Payload'] = m['Segment 2']['PayloadWeight']
+        v['Sizing Results']['FuelUsedGal'] = totalFuel / 6.83
+        v['Sizing Results']['TotalWeight'] = v['Weights']['EmptyWeight'] + m['MaxLoad'] + totalFuel
         v['Sizing Results']['MisSize'] = self.misSize
 
     def recordTrimFailure(self):
@@ -294,6 +361,17 @@ class Vehicle:
 
     def powerReq(self):
         v = self.vconfig
+
+
+        if v['Condition']['Speed'] < 80:
+            v['Main Rotor']['TipSpeed'] = 650
+        else:
+            v['Main Rotor']['TipSpeed'] = 450
+        if v['Main Rotor']['NumRotors']>1:
+            advancingLiftBalance = .9
+        else:
+            advancingLiftBalance = .5
+
         Density = v['Condition']['Density']
         V = v['Condition']['Speed'] * 1.687 # speed in feet per second
 
@@ -311,6 +389,7 @@ class Vehicle:
             WingCl = 0.
             WingCd = 0.
         WingDrag = .5 * WingCd * v['Wing']['WingArea'] * Density * V**2
+        # WingDrag = 0.
 
         # proportion out forward thrust between the aux prop and the rotors
         BodyDrag = .5 * Density * V**2 * v['Body']['FlatPlateDrag']
@@ -324,9 +403,10 @@ class Vehicle:
             ForwardThrust_perAuxprop = 0.
         ForwardThrust_rotors = ForwardThrust - ForwardThrust_auxprops
         ForwardThrust_perRotor = ForwardThrust_rotors / v['Main Rotor']['NumRotors']
+        if debug: pvar(locals(), ('ForwardThrust_perRotor', 'VerticalLift_perRotor', 'VerticalLift_wing'))
 
         # calculate rotor power
-        singleRotorPower = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perRotor, Fz=VerticalLift_perRotor, maxSteps=v['Simulation']['MaxSteps'])
+        singleRotorPower = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perRotor, Fz=VerticalLift_perRotor, maxSteps=v['Simulation']['MaxSteps'], advancingLiftBalance=advancingLiftBalance)
         singleRotorPower = singleRotorPower / (1-v['Body']['DownwashFactor'])
 
         # calculate prop power
@@ -336,56 +416,54 @@ class Vehicle:
         totalPower = singleRotorPower*v['Main Rotor']['NumRotors'] + singlePropPower*v['Aux Propulsion']['NumAuxProps'] + TotalDrag*V/550 # Is this right?  should the parasite power be just added on directly like this?
         totalPower = totalPower / (1-v['Antitorque']['AntitorquePowerFactor']) / (1-v['Powerplant']['TransmissionEfficiency'])
 
-        # record a few values
-        v['Condition']['SpeedOfSound'] = self.speedOfSound(Density)
-        v['Condition']['Fx'] = ForwardThrust_perRotor
-        v['Condition']['Fz'] = VerticalLift_perRotor
+        v['Performance']['MaxBladeLoadingSeen'] = max(v['Performance']['MaxBladeLoadingSeen'], math.sqrt(ForwardThrust_perRotor**2+VerticalLift_perRotor**2)/(Density*v['Main Rotor']['DiskArea']*v['Main Rotor']['TipSpeed']**2))
 
-        if debug: pvar(locals(), ('singleRotorPower', 'totalPower'))
         return totalPower
-        
+
 
     def write(self):
         # write out the output
         v = self.vconfig
         v.filename = 'Config/output.cfg'
         v.write()
-        
+
         m = self.mconfig
         m.filename = 'Config/missionout.cfg'
         m.write()
 
 
-if __name__ == '__main__':   
+if __name__ == '__main__':
     from configobj import ConfigObj
     from validate import Validator
     import matplotlib.pyplot as plt
+    import numpy as np
     v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
-    m = ConfigObj('Config/mission.cfg', configspec='Config/mission.configspec')
+    m = ConfigObj('Config/AHS_mission3.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
     v.validate(vvdt)
     mvdt = Validator()
     m.validate(mvdt)
-    vehicle = Vehicle(v, m, 26000.)
+    c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
+    airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+    vehicle = Vehicle(v, m, 34000., airfoildata)
     vehicle.flyMission()
-    vehicle.generatePowerCurve()
+    # vehicle.generatePowerCurve()
     vehicle.findHoverCeiling()
-    vehicle.findMaxRange()
-    vehicle.findMaxSpeed()
+    # vehicle.findMaxRange()
+    # vehicle.findMaxSpeed()
     vehicle.write()
 
-    plt.figure()
-    plt.plot(vehicle.vconfig['Power Curve']['Speeds'], vehicle.vconfig['Power Curve']['PowersSL'])
-    plt.plot(vehicle.vconfig['Power Curve']['Speeds'], vehicle.vconfig['Power Curve']['PowersCruise'])
-    MCPspeeds = [0, 200]
-    MCPSL = [vehicle.powerAvailable(0), vehicle.powerAvailable(0)]
-    MCPalt = [vehicle.powerAvailable(vehicle.vconfig['Condition']['CruiseAltitude']), vehicle.powerAvailable(vehicle.vconfig['Condition']['CruiseAltitude'])]
-    plt.plot(MCPspeeds, MCPSL, 'b')
-    plt.plot(MCPspeeds, MCPalt, 'g')
-    plt.legend(('Sea Level', 'Cruise'))
-    plt.axis([0, 200, 0, 7000])
-    plt.xlabel('Speed (kts)')
-    plt.ylabel('Power (hp)')
-    plt.show()
+    # plt.figure()
+    # plt.plot(vehicle.vconfig['Power Curve']['Speeds'], vehicle.vconfig['Power Curve']['PowersSL'])
+    # plt.plot(vehicle.vconfig['Power Curve']['Speeds'], vehicle.vconfig['Power Curve']['PowersCruise'])
+    # MCPspeeds = [0, 200]
+    # MCPSL = [vehicle.powerAvailable(0), vehicle.powerAvailable(0)]
+    # MCPalt = [vehicle.powerAvailable(vehicle.vconfig['Condition']['CruiseAltitude']), vehicle.powerAvailable(vehicle.vconfig['Condition']['CruiseAltitude'])]
+    # plt.plot(MCPspeeds, MCPSL, 'b')
+    # plt.plot(MCPspeeds, MCPalt, 'g')
+    # plt.legend(('Sea Level', 'Cruise'))
+    # #plt.axis([0, 200, 0, 7000])
+    # plt.xlabel('Speed (kts)')
+    # plt.ylabel('Power (hp)')
+    # plt.show()
 
-    
