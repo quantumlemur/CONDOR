@@ -37,8 +37,19 @@ MaxWingLoadProportion = float()
 
 [Aux Propulsion]
 NumAuxProps = integer()
-PropEfficiency = float()
 PropulsionFactor = float()
+Radius = float()
+NumBlades = integer()
+Solidity = float()
+TipSpeed = float()
+Kint = float()
+Kov = float()
+AirfoilFile = string()
+DragDivergenceMachNumber = float()
+AverageChord = float()
+TaperRatio = float()
+TipTwist = float()
+RootCutout = float()
 
 [Powerplant]
 BaselineMRP = float()

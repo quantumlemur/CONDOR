@@ -13,11 +13,12 @@ def pvar(locals_, vars_):
 
 class Vehicle:
 
-    def __init__(self, vconfig, mconfig, GW, airfoildata):
+    def __init__(self, vconfig, mconfig, GW, airfoildata_mainRotor, airfoildata_auxProp):
         self.vconfig = ConfigObj(vconfig)
         self.mconfig = ConfigObj(mconfig)
         self.GW = GW
-        self.airfoildata = airfoildata
+        self.airfoildata_mainRotor = airfoildata_mainRotor
+        self.airfoildata_auxProp = airfoildata_auxProp
         self.setup()
 
     def setup(self):
@@ -41,6 +42,12 @@ class Vehicle:
         v['Main Rotor']['Omega'] = v['Main Rotor']['TipSpeed'] / v['Main Rotor']['Radius']
         v['Main Rotor']['DiskArea'] = math.pi * v['Main Rotor']['Radius']**2 * v['Main Rotor']['NumRotors']
         v['Main Rotor']['AverageChord'] = v['Main Rotor']['DiskArea']*v['Main Rotor']['Solidity'] / (v['Main Rotor']['Radius']*(1-v['Main Rotor']['RootCutout'])*v['Main Rotor']['NumBlades'])
+
+        v['Aux Propulsion']['Omega'] = v['Aux Propulsion']['TipSpeed'] / v['Aux Propulsion']['Radius']
+        v['Aux Propulsion']['DiskArea'] = math.pi * v['Aux Propulsion']['Radius']**2 * v['Aux Propulsion']['NumAuxProps']
+        v['Aux Propulsion']['AverageChord'] = v['Aux Propulsion']['DiskArea']*v['Aux Propulsion']['Solidity'] / (v['Aux Propulsion']['Radius']*(1-v['Aux Propulsion']['RootCutout'])*v['Aux Propulsion']['NumBlades'])
+
+
         v['Wing']['WingSpan'] = v['Main Rotor']['Radius'] * v['Wing']['SpanRadiusRatio']
         v['Wing']['WingArea'] = v['Wing']['WingSpan'] * v['Wing']['WingChord']
         v['Wing']['WingAspectRatio'] = v['Wing']['WingSpan'] / v['Wing']['WingChord']
@@ -60,8 +67,10 @@ class Vehicle:
             v['Body']['FlatPlateDrag'] = v['Body']['FlatPlateDrag'] * 1.1
 
 
-        self.blade = Blade(airfoildata=self.airfoildata, skip_header=0, skip_footer=0, averageChord=v['Main Rotor']['AverageChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
+        self.blade = Blade(airfoildata=self.airfoildata_mainRotor, skip_header=0, skip_footer=0, averageChord=v['Main Rotor']['AverageChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
         self.rotor = Rotor(self.blade, psiSegments=v['Simulation']['numBladeElementSegments'], Vtip=v['Main Rotor']['TipSpeed'], radius=v['Main Rotor']['Radius'], numblades=v['Main Rotor']['NumBlades'])
+        self.blade_aux = Blade(airfoildata=self.airfoildata_auxProp, skip_header=0, skip_footer=0, averageChord=v['Aux Propulsion']['AverageChord']/v['Aux Propulsion']['Radius'], taperRatio=v['Aux Propulsion']['TaperRatio'], tipTwist=v['Aux Propulsion']['TipTwist'], rootCutout=v['Aux Propulsion']['RootCutout'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Aux Propulsion']['DragDivergenceMachNumber'])
+        self.rotor_aux = Rotor(self.blade_aux, psiSegments=v['Simulation']['numBladeElementSegments'], Vtip=v['Aux Propulsion']['TipSpeed'], radius=v['Aux Propulsion']['Radius'], numblades=v['Aux Propulsion']['NumBlades'])
         self.scaleEngine()
         self.scaleWeights()
         self.setMission(m)
@@ -376,8 +385,8 @@ class Vehicle:
         V = v['Condition']['Speed'] * 1.687 # speed in feet per second
 
         # proportion out the vertical lift between the rotors and the wing
-        VerticalLift_wing = 0.5 * v['Wing']['WingArea'] * Density * V**2 * v['Wing']['WingClMax'] # wing produces as much lift as it can
-        VerticalLift_wing = min(v['Wing']['MaxWingLoadProportion']*v['Condition']['Weight'], VerticalLift_wing) # ...up to 90% of the weight
+        VerticalLift_wing_max = 0.5 * v['Wing']['WingArea'] * Density * V**2 * v['Wing']['WingClMax'] # wing produces as much lift as it can
+        VerticalLift_wing = min(v['Wing']['MaxWingLoadProportion']*v['Condition']['Weight'], VerticalLift_wing_max) # ...up to some  of the weight
         VerticalLift_rotors = v['Condition']['Weight'] - VerticalLift_wing
         VerticalLift_perRotor = VerticalLift_rotors / v['Main Rotor']['NumRotors']
 
@@ -389,7 +398,7 @@ class Vehicle:
             WingCl = 0.
             WingCd = 0.
         WingDrag = .5 * WingCd * v['Wing']['WingArea'] * Density * V**2
-        # WingDrag = 0.
+        WingDrag = 0.
 
         # proportion out forward thrust between the aux prop and the rotors
         BodyDrag = .5 * Density * V**2 * v['Body']['FlatPlateDrag']
@@ -410,8 +419,13 @@ class Vehicle:
         singleRotorPower = singleRotorPower / (1-v['Body']['DownwashFactor'])
 
         # calculate prop power
-        singlePropPower = ForwardThrust_perAuxprop * V * v['Aux Propulsion']['PropEfficiency'] / 550
+        if ForwardThrust_perAuxprop > 0:
+            singlePropPower = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perAuxprop, Fz=.1, maxSteps=v['Simulation']['MaxSteps'], advancingLiftBalance=.5)
+        else:
+            singlePropPower = 0.
+        singlePropPower = 0.
 
+        pvar(locals(), ('BodyDrag', 'WingDrag', 'VerticalLift_perRotor', 'VerticalLift_wing', 'singleRotorPower', 'singlePropPower'))
         # find total power
         totalPower = singleRotorPower*v['Main Rotor']['NumRotors'] + singlePropPower*v['Aux Propulsion']['NumAuxProps'] + TotalDrag*V/550 # Is this right?  should the parasite power be just added on directly like this?
         totalPower = totalPower / (1-v['Antitorque']['AntitorquePowerFactor']) / (1-v['Powerplant']['TransmissionEfficiency'])

@@ -105,9 +105,11 @@ def PerformanceCurve():
     vconfig.validate(vvdt)
     v = ConfigObj(vconfig)
     m = ConfigObj(mconfig)
-    c81File='Config/%s'%vconfig['Main Rotor']['AirfoilFile']
-    airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
-    s92 = Vehicle(v, m, 26000, airfoildata)
+    c81File_mainRotor ='Config/%s'%vconfig['Main Rotor']['AirfoilFile']
+    airfoildata_mainRotor = np.genfromtxt(c81File_mainRotor, skip_header=0, skip_footer=0) # read in the airfoil file
+    c81File_auxProp ='Config/%s'%vconfig['Aux Propulsion']['AirfoilFile']
+    airfoildata_auxProp = np.genfromtxt(c81File_auxProp, skip_header=0, skip_footer=0) # read in the airfoil file
+    s92 = Vehicle(v, m, 26000, airfoildata_mainRotor, airfoildata_auxProp)
     s92.generatePowerCurve()
     # v['Simulation']['PowerCurveResolution'] = 1
     s92_V = np.array([50.1073, 60.2146, 69.9122, 80.0195, 90.1268, 100.098, 110.205, 120.312, 127.415, 137.249, 144.624, 151.59, 156.644, 163.2, 167.98])
@@ -121,7 +123,7 @@ def PerformanceCurve():
     plt.subplot(211)
     plt.plot(s92.vconfig['Power Curve']['Speeds'], fuelSL)
     plt.plot(s92_V, s92_HP, marker='o', markersize=3, linestyle='')
-    plt.axis([0, 200, 400, 2600])
+    # plt.axis([0, 250, 400, 2600])
     plt.legend(('Predicted', 'Published'), fontsize=labelfontsize)
     plt.tick_params(labelsize=axislabelfontsize)
     plt.xlabel('Airspeed (kts)', fontsize=labelfontsize)
@@ -135,16 +137,18 @@ def PerformanceCurve():
     vconfig.validate(vvdt)
     v = ConfigObj(vconfig)
     m = ConfigObj(mconfig)
-    c81File='Config/%s'%vconfig['Main Rotor']['AirfoilFile']
-    airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
-    xh59 = Vehicle(v, m, 12500., airfoildata)
+    c81File_mainRotor ='Config/%s'%vconfig['Main Rotor']['AirfoilFile']
+    airfoildata_mainRotor = np.genfromtxt(c81File_mainRotor, skip_header=0, skip_footer=0) # read in the airfoil file
+    c81File_auxProp ='Config/%s'%vconfig['Aux Propulsion']['AirfoilFile']
+    airfoildata_auxProp = np.genfromtxt(c81File_auxProp, skip_header=0, skip_footer=0) # read in the airfoil file
+    xh59 = Vehicle(v, m, 12500., airfoildata, airfoildata_auxProp)
     xh59.generatePowerCurve()
     xh59.write()
     plt.plot(xh59.vconfig['Power Curve']['Speeds'], xh59.vconfig['Power Curve']['PowersSL'])
     xh59_V = np.array([0, 21.966997, 42.561056, 63.471947, 85.122112, 87.762376, 89.663366, 91.669967, 105.927393, 108.567657, 120.712871, 125.887789, 126.627063, 130.112211, 136.765677, 136.554455, 143.841584, 146.481848, 151.339934, 154.719472])
     xh59_HP = np.array([1414.285714, 1168.163265, 925.714286, 813.673469, 732.857143, 800.816327, 854.081633, 786.122449, 879.795918, 817.346939, 912.857143, 1129.591837, 1050.612245, 1002.857143, 1054.285714, 1206.734694, 1307.755102, 1434.489796, 1520.816327, 1647.55102])
     plt.plot(xh59_V, xh59_HP, marker='o', markersize=3, linestyle='')
-    plt.axis([0, 160, 600, 2000])
+    # plt.axis([0, 250, 600, 2000])
     plt.legend(('Predicted', 'Published'), fontsize=labelfontsize)
     plt.tick_params(labelsize=axislabelfontsize)
     plt.xlabel('Airspeed (kts)', fontsize=labelfontsize)
