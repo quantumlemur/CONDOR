@@ -156,42 +156,57 @@ class Vehicle:
         speeds = [0]
         powersSL = []
         powersCruise = []
+        parasite = []
+        profile = []
+        induced = []
         # Find hover power and start out the arrays
         v['Condition']['Density'] = self.density(0) # SL
         v['Condition']['Speed'] = speeds[0]
-        powersSL.append(self.powerReq())
+        (totalPower, Pinduced, Pprofile, Pparasite) = self.powerReq()
+        powersSL.append(totalPower) # float('nan')
+        induced.append(Pinduced)
+        profile.append(Pprofile)
+        parasite.append(Pparasite)
         # Do the sea level sweep
-        while (not math.isnan(powersSL[-1])) or speeds[-1]<200:
+        while (not math.isnan(powersSL[-1])):
             speed = speeds[-1] + v['Simulation']['PowerCurveResolution']
             v['Condition']['Speed'] = speed
             v['Condition']['Density'] = self.density(0) # SL
-            powersSL.append(self.powerReq()) # float('nan')
-            powersCruise.append(float('nan'))
+            (totalPower, Pinduced, Pprofile, Pparasite) = self.powerReq()
+            powersSL.append(totalPower) # float('nan')
+            induced.append(Pinduced)
+            profile.append(Pprofile)
+            parasite.append(Pparasite)
+
+            #powersCruise.append(float('nan'))
             speeds.append(speed)
             print speed
-        # Find cruise hover power and start out the array
-        v['Condition']['Density'] = self.density(v['Condition']['CruiseAltitude']) # 10k ft
-        v['Condition']['Speed'] = speeds[0]
-        powersCruise.append(self.powerReq())
-        # Do the cruise sweep
-        i = 1
-        while (not math.isnan(powersCruise[-1])) or i<len(speeds):
-            speed = speeds[i-1] + v['Simulation']['PowerCurveResolution']
-            v['Condition']['Speed'] = speed
-            v['Condition']['Density'] = self.density(v['Condition']['CruiseAltitude']) # 10k ft
-            power = self.powerReq()
-            if speed in speeds:
-                powersCruise[i] = power
-            else:
-                speeds.append(speed)
-                powersSL.append(float('nan'))
-                powersCruise.append(power)
-            i += 1
-            print speed
+        # # Find cruise hover power and start out the array
+        # v['Condition']['Density'] = self.density(v['Condition']['CruiseAltitude']) # 10k ft
+        # v['Condition']['Speed'] = speeds[0]
+        # powersCruise.append(self.powerReq())
+        # # Do the cruise sweep
+        # i = 1
+        # while (not math.isnan(powersCruise[-1])) or i<len(speeds):
+        #     speed = speeds[i-1] + v['Simulation']['PowerCurveResolution']
+        #     v['Condition']['Speed'] = speed
+        #     v['Condition']['Density'] = self.density(v['Condition']['CruiseAltitude']) # 10k ft
+        #     power = self.powerReq()
+        #     if speed in speeds:
+        #         powersCruise[i] = power
+        #     else:
+        #         speeds.append(speed)
+        #         powersSL.append(float('nan'))
+        #         powersCruise.append(power)
+        #     i += 1
+        #     print speed
         # Store the power curves
         v['Power Curve']['Speeds'] = speeds
-        v['Power Curve']['PowersCruise'] = powersCruise
+        #v['Power Curve']['PowersCruise'] = powersCruise
         v['Power Curve']['PowersSL'] = powersSL
+        v['Power Curve']['induced'] = induced
+        v['Power Curve']['profile'] = profile
+        v['Power Curve']['parasite'] = parasite
 
     def findHoverCeiling(self):
         v = self.vconfig
@@ -372,14 +387,14 @@ class Vehicle:
         v = self.vconfig
 
 
-        if v['Condition']['Speed'] < 80:
-            v['Main Rotor']['TipSpeed'] = 650
-        else:
-            v['Main Rotor']['TipSpeed'] = 450
-        if v['Main Rotor']['NumRotors']>1:
+        if v['Main Rotor']['NumRotors'] > 1:
             advancingLiftBalance = .9
+            if v['Condition']['Speed'] < 80:
+                v['Main Rotor']['TipSpeed'] = 650
+            else:
+                v['Main Rotor']['TipSpeed'] = 450
         else:
-            advancingLiftBalance = .5
+            advancingLiftBalance = .6
 
         Density = v['Condition']['Density']
         V = v['Condition']['Speed'] * 1.687 # speed in feet per second
@@ -398,7 +413,7 @@ class Vehicle:
             WingCl = 0.
             WingCd = 0.
         WingDrag = .5 * WingCd * v['Wing']['WingArea'] * Density * V**2
-        WingDrag = 0.
+        # WingDrag = 0.
 
         # proportion out forward thrust between the aux prop and the rotors
         BodyDrag = .5 * Density * V**2 * v['Body']['FlatPlateDrag']
@@ -415,7 +430,10 @@ class Vehicle:
         if debug: pvar(locals(), ('ForwardThrust_perRotor', 'VerticalLift_perRotor', 'VerticalLift_wing'))
 
         # calculate rotor power
-        singleRotorPower = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perRotor, Fz=VerticalLift_perRotor, maxSteps=v['Simulation']['MaxSteps'], advancingLiftBalance=advancingLiftBalance)
+        (singleRotorPower, Pinduced, Pprofile) = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perRotor, Fz=VerticalLift_perRotor, maxSteps=v['Simulation']['MaxSteps'], advancingLiftBalance=advancingLiftBalance, returnAll=True)
+        # while math.isnan(singleRotorPower) and advancingLiftBalance<1:
+        #     advancingLiftBalance += .1
+        #     singleRotorPower = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perRotor, Fz=VerticalLift_perRotor, maxSteps=v['Simulation']['MaxSteps'], advancingLiftBalance=advancingLiftBalance)
         singleRotorPower = singleRotorPower / (1-v['Body']['DownwashFactor'])
 
         # calculate prop power
@@ -423,16 +441,19 @@ class Vehicle:
             singlePropPower = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perAuxprop, Fz=.1, maxSteps=v['Simulation']['MaxSteps'], advancingLiftBalance=.5)
         else:
             singlePropPower = 0.
-        singlePropPower = 0.
 
-        pvar(locals(), ('BodyDrag', 'WingDrag', 'VerticalLift_perRotor', 'VerticalLift_wing', 'singleRotorPower', 'singlePropPower'))
+        wingPower = WingDrag*V/550
+
+        pvar(locals(), ('BodyDrag', 'WingDrag', 'VerticalLift_perRotor', 'VerticalLift_wing', 'singleRotorPower', 'singlePropPower', 'wingPower'))
         # find total power
         totalPower = singleRotorPower*v['Main Rotor']['NumRotors'] + singlePropPower*v['Aux Propulsion']['NumAuxProps'] + TotalDrag*V/550 # Is this right?  should the parasite power be just added on directly like this?
         totalPower = totalPower / (1-v['Antitorque']['AntitorquePowerFactor']) / (1-v['Powerplant']['TransmissionEfficiency'])
 
         v['Performance']['MaxBladeLoadingSeen'] = max(v['Performance']['MaxBladeLoadingSeen'], math.sqrt(ForwardThrust_perRotor**2+VerticalLift_perRotor**2)/(Density*v['Main Rotor']['DiskArea']*v['Main Rotor']['TipSpeed']**2))
 
-        return totalPower
+        Pparasite = TotalDrag*V/550
+
+        return (totalPower, Pinduced, Pprofile, Pparasite)
 
 
     def write(self):

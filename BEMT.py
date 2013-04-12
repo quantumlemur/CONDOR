@@ -180,7 +180,6 @@ class Rotor:
             # Now the root
             f = self.numblades/2. * (self.r/self.R-self.blade.rootCutout)/(inflow_avg/self.Vtip)
             F *= 2./math.pi * np.arccos(np.exp(-f))
-            F = np.ones(F.shape)
             #F[~np.isfinite(F)] = 0.001
             newinflow = thrust / (2.*rho*diskArea*np.sqrt((V*math.cos(alpha_TPP))**2 + (V*math.sin(alpha_TPP) + F*inflow)**2))
             change = abs(np.sum(newinflow) - np.sum(inflow)) / np.sum(inflow)
@@ -190,8 +189,8 @@ class Rotor:
             steps += 1
         #uniform = (inflow * self.r) / self.r
         self.F = F
-        # if alpha_TPP < math.pi/4:
-        #     inflow = inflow * (1. + (4./3.*V/inflow)/(1.2+V/inflow)*self.r/self.R*self.cospsi) # Glauert non-uniform inflow correction
+        if alpha_TPP < math.pi/4:
+            inflow = inflow * (1. + (4./3.*V/inflow)/(1.2+V/inflow)*self.r/self.R*self.cospsi) # Glauert non-uniform inflow correction
         # import matplotlib.pyplot as plt
         # fig = plt.figure()
         # fig.add_subplot(221, projection='polar')
@@ -220,7 +219,7 @@ class Rotor:
         powers[0] = self.trim(tolerancePct, V, speedOfSound, rho, Fx, Fz, maxSteps, advancingLiftBalance=liftBalanceMin)
         powers[2] = self.trim(tolerancePct, V, speedOfSound, rho, Fx, Fz, maxSteps, advancingLiftBalance=liftBalanceMax)
 
-    def trim(self, tolerancePct, V, speedOfSound, rho, Fx, Fz, maxSteps, advancingLiftBalance=.5):
+    def trim(self, tolerancePct, V, speedOfSound, rho, Fx, Fz, maxSteps, advancingLiftBalance=.5, returnAll=False):
         """Attempts to trim the rotor at given conditions.  Will re-use trim variables from last time if possible.
         Note that "drag" and "weight" in the variables are really just the veritcal and horizontal components of
         the force that the rotor is generating."""
@@ -250,8 +249,8 @@ class Rotor:
         # First we'll check if the pre-existing trim solution is reasonable. If not, re-initialize them.
         if (self.beta_0<0) or (self.beta_0>math.pi/6) or (abs(self.theta_1c)>math.pi/6) or (abs(self.theta_1s)>math.pi/6) or math.isnan(self.power):
             self.reinitializeTrimVars()
-            self.inflow = np.ones(r.shape) * math.sqrt(math.sqrt(Fx**2 + Fz**2) / (2.*rho*self.diskArea))
-        #inflow = self.calcInflow(Fx=Fx, Fz=Fz, rho=rho, V=V, maxSteps=maxSteps)
+            #self.inflow = np.ones(r.shape) * math.sqrt(math.sqrt(Fx**2 + Fz**2) / (2.*rho*self.diskArea))
+        self.inflow = self.calcInflow(Fx=Fx, Fz=Fz, rho=rho, V=V, maxSteps=maxSteps)
         #F = self.F
         beta_0 = self.beta_0
         theta_0 = self.theta_0
@@ -267,6 +266,7 @@ class Rotor:
         P = 1
         T = 0
         lastP = 0
+        secondLastP = 0
         steps = 0
         CChanges = []
         TChanges = []
@@ -289,6 +289,11 @@ class Rotor:
         U_P = np.zeros(r.shape)
         U_T = np.zeros(r.shape)
         phi = np.zeros(r.shape)
+        dQinduced = np.zeros(r.shape)
+        dQprofile = np.zeros(r.shape)
+        Qinduced = np.zeros(r.shape)
+        Qprofile = np.zeros(r.shape)
+        mach = np.zeros(r.shape)
 
 
         rearLiftProportion = 0
@@ -298,9 +303,9 @@ class Rotor:
 
 
 
+        contours = ['dT', 'alphaEffective', 'mach', 'dL', 'dD', 'theta', 'dQinduced', 'dQprofile', 'phi']
         if animate:
             plt.ion()
-            contours = ['dT', 'alphaEffective', 'inflow', 'cl', 'cd', 'theta', 'U_P', 'U_T', 'phi']
             axes = []
             axes_cb = []
 
@@ -326,18 +331,18 @@ class Rotor:
         # plt.clabel(c, inline=1)
         # plt.draw()
 
-        U_T_avg = omega*.75*R
-        U_P_avg = inflow.sum()/inflow.size + V*math.sin(alpha_TPP)
-        phi_avg = np.arctan2(U_P_avg, U_T_avg)
-        requiredAvgCL = 2*math.sqrt(Fx**2 + Fz**2) / (rho*math.sqrt(U_T_avg**2 + U_P_avg**2)**2*self.bladeArea)
-        alpha_avg = blade.find_alpha(requiredAvgCL)
-        theta_avg = alpha_avg + phi_avg
-        theta_0 = theta_avg
+        # U_T_avg = omega*.75*R
+        # U_P_avg = inflow.sum()/inflow.size + V*math.sin(alpha_TPP)
+        # phi_avg = np.arctan2(U_P_avg, U_T_avg)
+        # requiredAvgCL = 2*math.sqrt(Fx**2 + Fz**2) / (rho*math.sqrt(U_T_avg**2 + U_P_avg**2)**2*self.bladeArea)
+        # alpha_avg = blade.find_alpha(requiredAvgCL)
+        # theta_avg = alpha_avg + phi_avg
+        # theta_0 = theta_avg
         theta_0 = .1
-        if debug: pvar(locals(), ('phi_avg', 'requiredAvgCL', 'alpha_avg', 'theta_avg', 'theta_0'))
+        # if debug: pvar(locals(), ('phi_avg', 'requiredAvgCL', 'alpha_avg', 'theta_avg', 'theta_0'))
 
         # this is the actual rotor trimming loop
-        while np.isfinite(P) and steps<maxSteps and abs(theta_0)<math.pi/2 and not (abs(liftDeficitPct)<tol and abs(lastP-P)/P<tol and abs(rearLiftProportion-.5)/.5<tol and abs(advancingLiftProportion-advancingLiftBalance)/advancingLiftBalance<tol*100) and abs(P)<40000:
+        while np.isfinite(P) and steps<maxSteps and abs(theta_0)<math.pi/2 and not (abs(liftDeficitPct)<tol and abs(lastP-P)/P<tol and abs(rearLiftProportion-.5)/.5<tol and abs(advancingLiftProportion-advancingLiftBalance)/advancingLiftBalance<tol*300) and abs(P)<40000:
             steps += 1
             # find the effective blade section angle of attack
             beta = beta_0
@@ -362,24 +367,28 @@ class Rotor:
             cl = cl / np.sqrt(1-mach**2)
             #cl[~np.isfinite(cl)] = 0. # if local mach>1, set cl=0.  This correction doesn't apply in those ranges, but this is probably acceptable and will allow trim solutions even with local M>1.  In combination with drag divergence, it should be an OK approximation.
             # Find the rotor sectional (1D) lift and drag
-            dL = .5 * rho * U_total**2 * chord * cl
-            dD = .5 * rho * U_total**2 * chord * cd
+            dL = .5 * rho * U_total**2 * chord/R * cl
+            dD = .5 * rho * U_total**2 * chord/R * cd
             # Calculate the piecewise (2D) lift and drag
 
             cosphi = np.cos(phi)
             sinphi = np.sin(phi)
 
-            dT = (dL*cosphi - dD*sinphi) * numblades / (2*math.pi) # per unit area                                          # * r * dpsi / (R*2*math.pi) * numblades  # hmmm r/R
-            dDinduced = dL*sinphi * numblades / (2*math.pi) # per unit area                                          # * r * dpsi / (R*2*math.pi) * numblades # hmmm r/R
-            dDprofile = dD*cosphi * numblades / (2*math.pi) # per unit area                                          # * r * dpsi / (R*2*math.pi) * numblades # hmmm r/R
+            dT = (dL*cosphi - dD*sinphi) * numblades / (2*math.pi) # per unit area
+            dPinduced = inflow*dT # per unit area
+            dDprofile = dD*cosphi * numblades / (2*math.pi) # per unit area
             # Integrate over the rotor surface
             lastT = T
             T = np.sum(dT * dr * r*dpsi)
             # print T / diskArea
-            Qinduced = np.sum(dDinduced * r * dr * r*dpsi)
+            #dQinduced = dDinduced * r * dr * r*dpsi
+            dQprofile = dDprofile * r * dr * r*dpsi
+            #Qinduced = np.sum(dDinduced * r * dr * r*dpsi)
             Qprofile = np.sum(dDprofile * r * dr * r*dpsi)
-            Pinduced = Qinduced * omega / 550 # np.sum(dDinduced * U_T) / 550
+            #Pinduced = Qinduced * omega / 550 # np.sum(dDinduced * U_T) / 550
+            Pinduced = np.sum(dPinduced * dr * r*dpsi) / 550
             Pprofile = Qprofile * omega / 550 # np.sum(dDprofile * U_T) / 550
+            secondLastP = lastP
             lastP = P
             P = Pinduced + Pprofile
             # find how much lift is missing
@@ -391,17 +400,17 @@ class Rotor:
             # print np.sin(phi)
             # print np.exp(-f)
             # print np.arccos(np.exp(-f))
-            Ftip = 2./math.pi * np.arccos(np.exp(-np.abs(self.numblades/2. * (R-r)/(r*np.sin(phi)))))
-            # Now the root
-            Froot = 2./math.pi * np.arccos(np.exp(-np.abs(self.numblades/2. * (r-rootCutout)/(rootCutout*np.sin(phi)))))
-            F = Ftip * Froot
+            # Ftip = 2./math.pi * np.arccos(np.exp(-np.abs(self.numblades/2. * (R-r)/(r*np.sin(phi)))))
+            # # Now the root
+            # Froot = 2./math.pi * np.arccos(np.exp(-np.abs(self.numblades/2. * (r-rootCutout)/(rootCutout*np.sin(phi)))))
+            # F = Ftip * Froot
             #F[~np.isfinite(F)] = 0.001
-            lastInflow = inflow
-            mask = dT<0
-            inflow = np.sqrt(np.abs(dT) / (2 * rho * np.sqrt(U_total))) #* F # (V*math.cos(alpha_TPP))**2 + (V*math.sin(alpha_TPP) + F*inflow)**2
-            inflow[mask] *= -1
-            inflow = (lastInflow*4 + inflow) / 5
-            print dT.min()
+            #lastInflow = inflow
+            #inflow = U_T*math.tan(alpha_TPP) + dT/(rho*U_T)/(2*np.sqrt(U_T**2+inflow**2)) + U_P # V*math.sin(alpha_TPP) #V*math.cos(alpha_TPP)*math.tan(alpha_TPP)
+            # mask = dT<0
+            # inflow = np.sqrt(np.abs(dT) / (2 * rho * np.sqrt(U_total))) #* F # (V*math.cos(alpha_TPP))**2 + (V*math.sin(alpha_TPP) + F*inflow)**2
+            # inflow[mask] *= -1
+            #inflow = (lastInflow*5 + inflow) / 6
             #inflow = dT / (2 * rho * dr * dpsi * r * np.sqrt(U_total))
             averageInflow = inflow.sum() / inflow.size
 
@@ -431,7 +440,7 @@ class Rotor:
 
             # Find vertical lift and adjust collective
             L = T * math.cos(alpha_TPP)
-            dtheta_0 = (totalThrust - T) * 0.0000001
+            dtheta_0 = (totalThrust - T) * 0.000001
             # cap the max change at 0.1
             if dtheta_0 > 0:
                 dtheta_0 = min(dtheta_0, 0.01)
@@ -484,6 +493,10 @@ class Rotor:
             if steps == False:  # suicide switch
                 time.sleep(100)
                 P = float('nan')
+            if abs(secondLastP - P)<10e-8 and abs(liftDeficitPct)<tol:  # if we're just flip-flopping around the solution but right up next to it
+                print('breaking')
+                break
+
 
 
         self.inflow = inflow
@@ -506,6 +519,8 @@ class Rotor:
             P_total = Pinduced + Pprofile
         else:
             P_total = float('nan')
+            Pinduced = float('nan')
+            Pprofile = float('nan')
 
 
 
@@ -513,56 +528,24 @@ class Rotor:
             plt.ioff()
         if plot:
             import matplotlib.pyplot as plt
-            f = plt.figure()
-            f.add_subplot(331, projection='polar')
-            c = plt.contourf(psi, r, dT)#, np.arange(-.25, 2, 0.01))
-            plt.colorbar(c)
-            plt.title('dT')
+            for i in xrange(9):
+                plt.subplot(331+i, projection='polar')
+                var = vars()[contours[i]]
+                if contours[i] in ['alphaEffective', 'theta', 'phi']:
+                    var *= 180/math.pi
+                    c = plt.contourf(psi, r, var, np.arange(-20, 20))
+                else:
+                    c = plt.contourf(psi, r, var)
+                plt.colorbar(c)
+                plt.title(contours[i])
+            #plt.show()
 
-            f.add_subplot(332, projection='polar')
-            c = plt.contourf(psi, r, alphaEffective*180/math.pi)#, np.arange(-20, 20))
-            plt.colorbar(c)
-            plt.title('alpha')
-
-            f.add_subplot(333, projection='polar')
-            c = plt.contourf(psi, r, inflow)
-            plt.colorbar(c)
-            plt.title('inflow')
-
-            f.add_subplot(334, projection='polar')
-            c = plt.contourf(psi, r, cl)
-            plt.colorbar(c)
-            plt.title('cl')
-
-            f.add_subplot(335, projection='polar')
-            c = plt.contourf(psi, r, cd, np.arange(0, .05, 0.001))
-            plt.colorbar(c)
-            plt.title('cd')
-
-            f.add_subplot(336, projection='polar')
-            c = plt.contourf(psi, r, theta*180/math.pi)
-            plt.colorbar(c)
-            plt.title('theta')
-
-            f.add_subplot(337, projection='polar')
-            c = plt.contourf(psi, r, U_P)
-            plt.colorbar(c)
-            plt.title('U_P')
-
-            f.add_subplot(338, projection='polar')
-            c = plt.contourf(psi, r, U_T)
-            plt.colorbar(c)
-            plt.title('U_T')
-
-            f.add_subplot(339, projection='polar')
-            c = plt.contourf(psi, r, phi*180/math.pi)#, np.arange(-20, 40))
-            plt.colorbar(c)
-            plt.title('phi')
-
-        #plt.show()
 
         self.power = P_total
-        return P_total #(Pinduced, Pprofile)
+        if returnAll:
+            return (P_total, Pinduced, Pprofile)
+        else:
+            return P_total #(Pinduced, Pprofile)
 
 
 
@@ -641,11 +624,11 @@ if __name__ == '__main__':
         plot = True
         animate = False
         GW = 26000.
-        V = 0.
+        V = 200.
         V *= 1.687
         horizM = 1.
         vertM = 1.
-        balance = .5
+        balance = .6
         s = 'GW: %d     V: %d     horizM: %d     vertM: %d     balance: %f' % (GW, V, horizM, vertM, balance)
         print s
         v = ConfigObj('Config/vehicle_s92.cfg', configspec='Config/vehicle.configspec')
@@ -676,35 +659,35 @@ if __name__ == '__main__':
         if plot:
             plt.figure()
             plt.subplot(241)
-            plt.plot(rotor.thrust_hist[2:])
+            plt.plot(rotor.thrust_hist[5:])
             plt.title('thrust')
 
             plt.subplot(242)
-            plt.plot(rotor.pitch_hist[2:])
+            plt.plot(rotor.pitch_hist[5:])
             plt.title('pitch')
 
             plt.subplot(243)
-            plt.plot(rotor.roll_hist[2:])
+            plt.plot(rotor.roll_hist[5:])
             plt.title('roll')
 
             plt.subplot(244)
-            plt.plot(rotor.miscA_hist[2:])
+            plt.plot(rotor.miscA_hist[5:])
             plt.title('rearLiftProportion')
 
             plt.subplot(245)
-            plt.plot(rotor.theta_0_hist[2:])
+            plt.plot(rotor.theta_0_hist[5:])
             plt.title('theta_0')
 
             plt.subplot(246)
-            plt.plot(rotor.t1c_hist[2:])
+            plt.plot(rotor.t1c_hist[5:])
             plt.title('t1c')
 
             plt.subplot(247)
-            plt.plot(rotor.t1s_hist[2:])
+            plt.plot(rotor.t1s_hist[5:])
             plt.title('t1s')
 
             plt.subplot(248)
-            plt.plot(rotor.miscB_hist[2:])
+            plt.plot(rotor.miscB_hist[5:])
             plt.title('advancingLiftProportion')
 
             plt.show()
