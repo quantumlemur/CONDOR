@@ -14,12 +14,13 @@ def pvar(locals_, vars_):
 
 class SizedVehicle:
 
-    def __init__(self, vconfig, mconfig, airfoildata):
+    def __init__(self, vconfig, mconfig, airfoildata_mainRotor, airfoildata_auxProp):
         self.vconfig = vconfig
         self.mconfig = mconfig
         self.vconfig['Sizing Results']['SizedGrossWeight'] = float('nan')
 
-        self.airfoildata = airfoildata
+        self.airfoildata_mainRotor = airfoildata_mainRotor
+        self.airfoildata_auxProp = airfoildata_auxProp
 
 
     def sizeMission(self):
@@ -34,7 +35,7 @@ class SizedVehicle:
         viableCandidate = False
         goodAbove = False
         GW = (GWmax + GWmin) / 2
-        choppah = Vehicle(v, m, GW, self.airfoildata) # http://www.youtube.com/watch?v=Xs_OacEq2Sk
+        choppah = Vehicle(v, m, GW, self.airfoildata_mainRotor, self.airfoildata_auxProp) # http://www.youtube.com/watch?v=Xs_OacEq2Sk
         choppah.flyMission()
         while steps<choppah.vconfig['Simulation']['MaxSteps'] and (GWmax-GWmin)>choppah.vconfig['Simulation']['GWTolerance']:
             # Depending on whether we're oversized or undersized for the mission, adjust our GW limits accordingly
@@ -51,7 +52,7 @@ class SizedVehicle:
                 else: # we can't trim and we never could
                     GWmax = GW
             GW = (GWmax - GWmin) / 2 + GWmin
-            choppah = Vehicle(v, m, GW, self.airfoildata)
+            choppah = Vehicle(v, m, GW, self.airfoildata_mainRotor, self.airfoildata_auxProp)
             choppah.flyMission()
             steps += 1
             #if math.isnan(choppah.misSize) and choppah.vconfig['Weights']['MaxAvailableFuelWeight']<0:
@@ -97,16 +98,18 @@ if __name__ == '__main__':
     from configobj import ConfigObj
     from validate import Validator
     import numpy as np
-    v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
-    m = ConfigObj('Config/AHS_mission1.cfg', configspec='Config/mission.configspec')
+    v = ConfigObj('Config/vehicle_s92.cfg', configspec='Config/vehicle.configspec')
+    m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
     v.validate(vvdt)
     mvdt = Validator()
     m.validate(mvdt)
     startTime = clock()
-    c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
-    airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
-    blah = SizedVehicle(v, m, airfoildata)
+    c81File_mainRotor = 'Config/%s'%v['Main Rotor']['AirfoilFile']
+    c81File_auxProp = 'Config/%s'%v['Aux Propulsion']['AirfoilFile']
+    airfoildata_mainRotor = np.genfromtxt(c81File_mainRotor, skip_header=0, skip_footer=0) # read in the airfoil file
+    airfoildata_auxProp = np.genfromtxt(c81File_auxProp, skip_header=0, skip_footer=0) # read in the airfoil file
+    blah = SizedVehicle(v, m, airfoildata_mainRotor, airfoildata_auxProp)
     veh = blah.sizeMission()
     if veh: veh.write()
     stopTime = clock()

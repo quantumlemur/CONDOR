@@ -27,7 +27,7 @@ TipSpeedrange = [400, 800]
 GWrange = [15000, 45000]
 
 
-numPerParam = 40
+numPerParam = 5
 sweeplimits = [[100, 250], [300, 1000]] # speed, range
 baselineRange = 544.
 baselineSpeed = 153.
@@ -62,20 +62,20 @@ GWtickhighpadding = 4000
 MRPtickspacing = 250
 tickresolution = 1000
 
-splitFourPlots = True
-displayPlots = False
-saveData = False
+splitFourPlots = False
+displayPlots = True
+saveData = True
 saveFigures = True
 annotatePlots = True
-showTitle = False
+showTitle = True
 
-generateNewBaseline = False
-generateNewData = False
+generateNewBaseline = True
+generateNewData = True
 
 plotScalingPlots = False
 plotPerformanceCurve = False
 
-plotRangeSpeedContour = False
+plotRangeSpeedContour = True
 plotWeightImprovements = False
 plotDragImprovements = False
 plotSFCImprovements = False
@@ -84,23 +84,26 @@ plotSweepContours = ['TipSpeed']#['Solidity', 'DiskLoading', 'TipSpeed', 'SpanRa
 plotExtraContours = False
 
 
-vconfig = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
+vconfig = ConfigObj('Config/vehicle_s92.cfg', configspec='Config/vehicle.configspec')
 mconfig = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
 vvdt = Validator()
 vconfig.validate(vvdt)
 mvdt = Validator()
 mconfig.validate(mvdt)
-c81File='Config/%s'%vconfig['Main Rotor']['AirfoilFile']
-airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+c81File_mainRotor = 'Config/%s'%vconfig['Main Rotor']['AirfoilFile']
+c81File_auxProp = 'Config/%s'%vconfig['Aux Propulsion']['AirfoilFile']
+airfoildata_mainRotor = np.genfromtxt(c81File_mainRotor, skip_header=0, skip_footer=0) # read in the airfoil file
+airfoildata_auxProp = np.genfromtxt(c81File_auxProp, skip_header=0, skip_footer=0) # read in the airfoil file
+
 
 
 class Worker(multiprocessing.Process):
-    
+
     def __init__(self, task_queue, result_queue):
         multiprocessing.Process.__init__(self)
         self.tasks = task_queue
         self.results = result_queue
-        
+
     def run(self):
         while True:
             task = self.tasks.get()
@@ -112,21 +115,22 @@ class Worker(multiprocessing.Process):
             self.results.put(flatdict)
 
 class Task(object):
-    def __init__(self, i, j, k, vconfig, mconfig, airfoildata):
+    def __init__(self, i, j, k, vconfig, mconfig, airfoildata_mainRotor, airfoildata_auxProp):
         self.i = i
         self.j = j
         self.k = k
         self.vconfig = vconfig
         self.mconfig = mconfig
-        self.airfoildata = airfoildata
+        self.airfoildata_mainRotor = airfoildata_mainRotor
+        self.airfoildata_auxProp = airfoildata_auxProp
     def __call__(self):
         vconfig = self.vconfig
         mconfig = self.mconfig
-        vehicle = SizedVehicle(vconfig, mconfig, self.airfoildata)
+        vehicle = SizedVehicle(vconfig, mconfig, self.airfoildata_mainRotor, self.airfoildata_auxProp)
         sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object
         if sizedVehicle:
             #sizedVehicle.generatePowerCurve()
-            sizedVehicle.findHoverCeiling()
+            #sizedVehicle.findHoverCeiling()
             #sizedVehicle.findMaxRange()
             #sizedVehicle.findMaxSpeed()
             v = sizedVehicle.vconfig
@@ -141,8 +145,8 @@ class Task(object):
 #     Soliditys = np.linspace(Solidityrange[0], Solidityrange[1], numPerParam)
 #     TipSpeeds = np.linspace(TipSpeedrange[0], TipSpeedrange[1], numPerParam)
 #     GWs = np.linspace(GWrange[0], GWrange[1], numPerParam)
-    
-    
+
+
 #     output = np.zeros((len(DiskLoadings)*len(Soliditys)*len(TipSpeeds)*len(GWs), 7))
 #     i = 0
 #     for DiskLoading in DiskLoadings:
@@ -201,7 +205,7 @@ def GenerateBaselineData():
             m['Segment 2']['Distance'] = (float) (RANGE[i][j])
             m['Segment 2']['Speed'] = (float) (SPEED[i][j])
             v['Wing']['MaxSpeed'] = (float) (SPEED[i][j])
-            tasks.put(Task(i, j, 0, v, m, airfoildata))
+            tasks.put(Task(i, j, 0, v, m, airfoildata_mainRotor, airfoildata_auxProp))
             outstandingTasks += 1
     # collect finished tasks
     for num in xrange(outstandingTasks):
@@ -221,16 +225,16 @@ def GenerateBaselineData():
     # RANGE = scipy.ndimage.zoom(RANGE, 3)
     # GW = scipy.ndimage.zoom(GW, 3)
     #MCP = scipy.ndimage.zoom(MCP, 3)
-    
+
     GWN = np.arange((int)(GW[np.isfinite(GW)].min())/tickresolution*tickresolution-GWticklowpadding, min((int)(GW[np.isfinite(GW)].max()), 50000)/tickresolution*tickresolution+GWtickspacing+GWtickhighpadding, GWtickspacing)
-    
+
     # find baseline datapoint
     m = ConfigObj(mconfig)
     v = ConfigObj(vconfig)
     m['Segment 2']['Distance'] = baselineRange
     m['Segment 2']['Speed'] = baselineSpeed
     v['Wing']['MaxSpeed'] = baselineSpeed
-    vehicle = SizedVehicle(v, m, airfoildata)
+    vehicle = SizedVehicle(v, m, airfoildata_mainRotor, airfoildata_auxProp)
     vehicle = vehicle.sizeMission()
     if vehicle:
         vehicle.generatePowerCurve()
@@ -239,10 +243,10 @@ def GenerateBaselineData():
         vehicle.findMaxSpeed()
         vehicle.write()
         baselineGW = vehicle.vconfig['Sizing Results']['SizedGrossWeight'] if vehicle else float('nan')
-    
+
     return (SPEED, RANGE, GW, GWN, baselineGW)
-    
-    
+
+
 
 def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var=['Nothing'], value=[0]):
     sweepvars = ['Speed', 'Range']
@@ -258,7 +262,7 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
     SPEED, RANGE, = np.meshgrid(sweepspreads[0], sweepspreads[1])
     GW = np.zeros(RANGE.shape)
     #MCP = np.zeros(RANGE.shape)
-    
+
     num = output.shape[0]
     tic = clock()
     if filename == 'Baseline':
@@ -276,7 +280,7 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
                     v['Wing']['MaxSpeed'] = (float) (SPEED[i][j])
                     for k in xrange(len(section)):
                         v[section[k]][var[k]] = value[k]
-                    tasks.put(Task(i, j, 0, v, m, airfoildata))
+                    tasks.put(Task(i, j, 0, v, m, airfoildata_mainRotor, airfoildata_auxProp))
                     outstandingTasks += 1
             # collect results back
             for num in xrange(outstandingTasks):
@@ -293,12 +297,12 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
     # RANGE = scipy.ndimage.zoom(RANGE, 3)
     # GW = scipy.ndimage.zoom(GW, 3)
     #MRP = scipy.ndimage.zoom(MRP, 3)
-    
+
     GWN = baseline[3]
 
     #MRPN = np.linspace(MRP.min(), MRP.max(), num=1000)
     plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
-    
+
     plot = plt.subplot(1, 1, 1)
     plot.tick_params(labelsize=axislabelfontsize)
     CS = plt.contourf(SPEED, RANGE, GW, GWN)
@@ -306,12 +310,12 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
     cb.ax.tick_params(labelsize=axislabelfontsize)
     CS = plt.contour(baseline[0], baseline[1], baseline[2], GWN, colors='k')
     plt.clabel(CS, inline=1, fontsize=contourfontsize, fmt='%1.f')
-    
+
     plt.xlabel('Ingress Speed (kts)', fontsize=labelfontsize)
     plt.ylabel('Mission Range (nm)', fontsize=labelfontsize)
     if showTitle: plt.title('Sized gross weight contours', fontsize=titlefontsize)
     plt.grid(True)
-    
+
     if annotatePlots:
         # measure improvement over baseline
         m = ConfigObj(mconfig)
@@ -321,7 +325,7 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
         v['Wing']['MaxSpeed'] = baselineSpeed
         for k in xrange(len(section)):
             v[section[k]][var[k]] = value[k]
-        vehicle = SizedVehicle(v, m, airfoildata)
+        vehicle = SizedVehicle(v, m, airfoildata_mainRotor, airfoildata_auxProp)
         vehicle = vehicle.sizeMission()
         if vehicle:
             newGW = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
@@ -351,7 +355,7 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
     #plt.ylabel('Ferry Range (nm)', fontsize=labelfontsize)
     #plt.title('MRP contours', fontsize=titlefontsize)
     #plt.grid(True)
-    
+
     plt.tight_layout()
     if saveFigures: pylab.savefig('Output/Figures/%sContour.png' % filename, bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
@@ -386,7 +390,7 @@ def SweepContours(baseline):
             extraContour = 'Nothing'
             section = 'Main Rotor'
             title = '%d m Radius'
-        
+
         sweepvars = ['Speed', 'Range']
         # pick the spreads of the variables we're going to sweep
         sweepspreads = np.zeros((len(sweepvars), numPerParam))
@@ -417,7 +421,7 @@ def SweepContours(baseline):
                         m['Segment 2']['Speed'] = (float) (SPEED[i][j])
                         v['Wing']['MaxSpeed'] = (float) (SPEED[i][j])
                         v[section][sweepVar] = Spread[DLi]
-                        tasks.put(Task(i, j, DLi, v, m, airfoildata))
+                        tasks.put(Task(i, j, DLi, v, m, airfoildata_mainRotor, airfoildata_auxProp))
                         outstandingTasks += 1
             for num in xrange(outstandingTasks):
                 if i>0: showProgress('%s - %s' % (sys._getframe().f_code.co_name, sweepVar), tic, clock(), num, outstandingTasks)
@@ -434,7 +438,7 @@ def SweepContours(baseline):
             GW = data['GW']
             MCP = data['MCP']
             extraContours = data['extraContours']
-        
+
         # SPEED = scipy.ndimage.zoom(SPEED, 3)
         # RANGE = scipy.ndimage.zoom(RANGE, 3)
         # MCP = smoothedMCP
@@ -444,7 +448,7 @@ def SweepContours(baseline):
         GWN = baseline[3]
         if not splitFourPlots:
             plt.figure(num=None, figsize=(doublefigW, doublefigH), dpi=figDPI, facecolor='w', edgecolor='k')
-        
+
         for DLi in xrange(len(Spread)):
             if splitFourPlots:
                 plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
@@ -473,7 +477,7 @@ def SweepContours(baseline):
                 m['Segment 2']['Speed'] = baselineSpeed
                 v['Wing']['MaxSpeed'] = baselineSpeed
                 v[section][sweepVar] = Spread[DLi]
-                vehicle = SizedVehicle(v, m, airfoildata)
+                vehicle = SizedVehicle(v, m, airfoildata_mainRotor, airfoildata_auxProp)
                 vehicle = vehicle.sizeMission()
                 if vehicle:
                     newGW = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
@@ -515,10 +519,10 @@ def SweepContours(baseline):
 def PerformanceCurve():
     v = ConfigObj(vconfig)
     m = ConfigObj(mconfig)
-    choppah = Vehicle(v, m, 25000, airfoildata)
+    choppah = Vehicle(v, m, 25000, airfoildata_mainRotor, airfoildata_auxProp)
     choppah.generatePowerCurve()
     #choppah.write()
-    
+
     plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
     plt.plot(choppah.vconfig['Power Curve']['Speeds'], choppah.vconfig['Power Curve']['PowersSL'])
     plt.plot(choppah.vconfig['Power Curve']['Speeds'], choppah.vconfig['Power Curve']['PowersCruise'])
@@ -534,13 +538,13 @@ def PerformanceCurve():
     plt.ylabel('Power (hp)', fontsize=labelfontsize)
     plt.title('Predicted S-92 Power Curve', fontsize=titlefontsize)
     plt.grid(True)
-    
+
     if saveFigures: pylab.savefig('Output/Figures/S92PerformanceCurve.png', bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
 
-    
 
-    
+
+
 
 def ScalingPlots():
     # flat plate drag area
@@ -561,7 +565,7 @@ def ScalingPlots():
     plt.tight_layout()
     if saveFigures: pylab.savefig('Output/Figures/flatPlateDragScaling.png', bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
-    
+
     # engine weight
     plt.figure(num=None, figsize=(doublefigW, doublefigH), dpi=figDPI, facecolor='w', edgecolor='k')
     plt.subplot(2, 2, 1)
@@ -575,7 +579,7 @@ def ScalingPlots():
     plt.ylabel('Engine Weight (lbs)', fontsize=labelfontsize)
     plt.title('Engine Weight Scaling', fontsize=titlefontsize)
     plt.tight_layout()
-    
+
     # drive system weight
     plt.subplot(2, 2, 2)
     GW = np.arange(0, 40000, 100)
@@ -593,14 +597,14 @@ def ScalingPlots():
     plt.ylabel('Drive System Weight (lbs)', fontsize=labelfontsize)
     plt.title('Drive System Scaling (DL=10psf)', fontsize=titlefontsize)
     plt.tight_layout()
-        
+
     # wing weight
     plt.subplot(2, 2, 3)
     GW = np.arange(0, 40000, 100)
     SRR = [1., 2., 3.]
     weights = np.zeros((len(SRR), GW.size))
     DL = 10
-    for i in xrange(len(SRR)):    
+    for i in xrange(len(SRR)):
         weights[i] = 0.00272*GW**1.4/DL**0.8*SRR[i]**0.8
         plt.plot(GW, weights[i])
         plt.text(30000, weights[i][300]-100, r'$\frac{Span}{R}=%d$' % SRR[i], fontsize=labelfontsize)
@@ -611,11 +615,11 @@ def ScalingPlots():
     plt.ylabel('Wing Weight (lbs)', fontsize=labelfontsize)
     plt.title('Wing Weight Scaling (DL=10psf)', fontsize=titlefontsize)
     plt.tight_layout()
-    
+
     # SFC
     plt.subplot(2, 2, 4)
     gamma = np.arange(.5, 4, .1)
-    SFCfrac = (-0.00932*gamma**2+0.865*gamma+0.445)/(gamma+0.301)  
+    SFCfrac = (-0.00932*gamma**2+0.865*gamma+0.445)/(gamma+0.301)
     plt.plot(gamma, SFCfrac)
     plt.text(.8, 1.05, r'$\frac{SFC}{SFC_{baseline}}=\frac{-.00932*\gamma^2+.865*\gamma+.445}{\gamma+.301}$', fontsize=labelfontsize+4)
     plt.tick_params(labelsize=axislabelfontsize)
@@ -656,7 +660,7 @@ def ScalingPlots():
 #                 mconfig['Segment 2']['Distance'] = (float) (RANGE[i][j])
 #                 mconfig['Segment 2']['Speed'] = (float) (SPEED[i][j])
 #                 vconfig['Main Rotor']['Solidity'] = Spread[DLi]
-#                 vehicle = SizedVehicle(vconfig, mconfig, airfoildata)
+#                 vehicle = SizedVehicle(vconfig, mconfig, airfoildata_mainRotor, airfoildata_auxProp)
 #                 vehicle = vehicle.sizeMission()
 #                 GW[DLi][i][j] = vehicle.vconfig['SizedGrossWeight']
 #                 MRP[DLi][i][j] = vehicle.vconfig['Powerplant']['MCP']
@@ -678,7 +682,7 @@ def ScalingPlots():
 #     plt.tight_layout()
 #     pylab.savefig('Output/SolidityGWContour.png', bbox_inches=0)
 #     if displayPlots: plt.show()
-    
+
 #     #plt.figure(num=None, figsize=(figW, figH), dpi=figDPI, facecolor='w', edgecolor='k')
 #     #for DLi in xrange(len(Spread)):
 #     #    plot = plt.subplot(2, 2, DLi+1)
@@ -733,11 +737,11 @@ def fmtTime(total):
 #         vehicle.setMission(vehicle.mconfig)
 #         vehicle.sizeMission()
 #         output[i][2] = vehicle.vconfig['SizedGrossWeight']
-    
+
 #     np.savetxt('Output/parameterSweep.csv', output, delimiter=',')
-    
-    
-    
+
+
+
 def cartesian(arrays, out=None):
     """
     Generate a cartesian product of input arrays.
@@ -757,10 +761,10 @@ def cartesian(arrays, out=None):
         for j in xrange(1, arrays[0].size):
             out[j*m:(j+1)*m,1:] = out[0:m,1:]
     return out
-    
 
-    
-    
+
+
+
     #output = np.zeros((len(DiskLoadings)*len(Soliditys)*len(TipSpeeds)*len(GWs), 7))
     #i = 0
     #for DiskLoading in DiskLoadings:
@@ -774,15 +778,15 @@ def cartesian(arrays, out=None):
     #                vehicle.setup()
     #                blah.setMission(m)
     #                vehicle.sizeMission2()
-    #                
+    #
     #                output[i] = [GW, DiskLoading, Solidity, TipSpeed, vehicle.SPEEDmaxr, vehicle.SPEEDmaxr, vehicle.maxrange]
     #                i += 1
     #np.savetxt('Output/parameterSweep.csv', output, delimiter=',')
-    
-    
+
+
 if __name__ == '__main__':
 
-    
+
     startTime = clock()
 
     tasks = multiprocessing.JoinableQueue()

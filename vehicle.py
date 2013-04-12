@@ -180,7 +180,7 @@ class Vehicle:
 
             #powersCruise.append(float('nan'))
             speeds.append(speed)
-            print speed
+            if debug: print speed
         # # Find cruise hover power and start out the array
         # v['Condition']['Density'] = self.density(v['Condition']['CruiseAltitude']) # 10k ft
         # v['Condition']['Speed'] = speeds[0]
@@ -218,7 +218,7 @@ class Vehicle:
         v['Condition']['Speed'] = 0.
         while steps<v['Simulation']['MaxSteps'] and (HCmax-HCmin)>v['Simulation']['HoverCeilingTolerance'] :
             v['Condition']['Density'] = self.density(altitude)
-            powerRequired = self.powerReq()
+            (powerRequired, Pinduced, Pprofile, Pparasite) = self.powerReq()
             powerAvailable = self.powerAvailable(altitude)
             if debug: pvar(locals(), ('HCmin', 'altitude', 'HCmax', 'powerRequired', 'powerAvailable'))
             if math.isnan(powerRequired) or powerRequired>powerAvailable:
@@ -251,7 +251,7 @@ class Vehicle:
         """Finds and stores the speed for max range and that range.  Must be run after generatePowerCurve()"""
         v = self.vconfig
         speeds = v['Power Curve']['Speeds']
-        powers = v['Power Curve']['PowersCruise']
+        powers = v['Power Curve']['PowersSL']
         SPEEDmaxr = 0.
         POWERmaxr = 999999.
         imin = 9999999.
@@ -273,7 +273,7 @@ class Vehicle:
         v = self.vconfig
         powerAvailable = self.powerAvailable(v['Condition']['CruiseAltitude'])
         speeds = v['Power Curve']['Speeds']
-        powers = v['Power Curve']['PowersCruise']
+        powers = v['Power Curve']['PowersSL']
         maxSpeed = 0.
         maxSpeedPower = 0.
         for i in range(len(speeds)):
@@ -359,7 +359,7 @@ class Vehicle:
                     duration = m[seg]['EndTime'] - elapsed
                     if debugFine: print 'Last segment bit, duration %s minutes' % duration
                 v['Condition']['Weight'] = w
-                power = self.powerReq()
+                (power, Pinduced, Pprofile, Pparasite) = self.powerReq()
                 if math.isnan(power):
                     self.recordTrimFailure()
                     return
@@ -444,7 +444,7 @@ class Vehicle:
 
         wingPower = WingDrag*V/550
 
-        pvar(locals(), ('BodyDrag', 'WingDrag', 'VerticalLift_perRotor', 'VerticalLift_wing', 'singleRotorPower', 'singlePropPower', 'wingPower'))
+        if debug: pvar(locals(), ('BodyDrag', 'WingDrag', 'VerticalLift_perRotor', 'VerticalLift_wing', 'singleRotorPower', 'singlePropPower', 'wingPower'))
         # find total power
         totalPower = singleRotorPower*v['Main Rotor']['NumRotors'] + singlePropPower*v['Aux Propulsion']['NumAuxProps'] + TotalDrag*V/550 # Is this right?  should the parasite power be just added on directly like this?
         totalPower = totalPower / (1-v['Antitorque']['AntitorquePowerFactor']) / (1-v['Powerplant']['TransmissionEfficiency'])
