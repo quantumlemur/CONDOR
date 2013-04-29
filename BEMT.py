@@ -494,7 +494,7 @@ class Rotor:
                 time.sleep(100)
                 P = float('nan')
             if abs(secondLastP - P)<10e-8 and abs(liftDeficitPct)<tol:  # if we're just flip-flopping around the solution but right up next to it
-                print('breaking')
+                if debug: print('breaking')
                 break
 
 
@@ -540,7 +540,7 @@ class Rotor:
                 plt.title(contours[i])
             #plt.show()
 
-
+        # pvar(locals(), ('V', 'Fx', 'Fz', 'P_total'))
         self.power = P_total
         if returnAll:
             return (P_total, Pinduced, Pprofile)
@@ -623,15 +623,15 @@ if __name__ == '__main__':
         debug = True
         plot = True
         animate = False
-        GW = 26000.
-        V = 200.
+        GW = 34000.
+        V = 80.
         V *= 1.687
         horizM = 1.
         vertM = 1.
-        balance = .6
+        balance = .7
         s = 'GW: %d     V: %d     horizM: %d     vertM: %d     balance: %f' % (GW, V, horizM, vertM, balance)
         print s
-        v = ConfigObj('Config/vehicle_s92.cfg', configspec='Config/vehicle.configspec')
+        v = ConfigObj('Config/vehicle_AHS.cfg', configspec='Config/vehicle.configspec')
         m = ConfigObj('Config/mission.cfg', configspec='Config/mission.configspec')
         vvdt = Validator()
         v.validate(vvdt)
@@ -643,7 +643,7 @@ if __name__ == '__main__':
         R = math.sqrt(GW / (math.pi * v['Main Rotor']['DiskLoading'] * v['Main Rotor']['NumRotors']))
         v['Main Rotor']['Radius'] = R
         v['Main Rotor']['DiskArea'] = math.pi * v['Main Rotor']['Radius']**2 * v['Main Rotor']['NumRotors']
-        v['Main Rotor']['AverageChord'] = v['Main Rotor']['DiskArea']*v['Main Rotor']['Solidity'] / (v['Main Rotor']['Radius']*(1-v['Main Rotor']['RootCutout'])*v['Main Rotor']['NumBlades'])
+        v['Main Rotor']['AverageChord'] = 1. # v['Main Rotor']['DiskArea']*v['Main Rotor']['Solidity'] / (v['Main Rotor']['Radius']*(1-v['Main Rotor']['RootCutout'])*v['Main Rotor']['NumBlades'])
         omega = Vtip / R # rad/s
         c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
         airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
@@ -655,6 +655,7 @@ if __name__ == '__main__':
         Fhorizontal = 1./2 * rho * V**2 * f / horizM
         Fvertical = GW / vertM
         print rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=rho, speedOfSound=1026., Fx=Fhorizontal, Fz=Fvertical, maxSteps=v['Simulation']['MaxSteps'], advancingLiftBalance=balance) + Fhorizontal*V/550
+
 
         if plot:
             plt.figure()

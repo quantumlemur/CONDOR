@@ -12,7 +12,7 @@ from validate import Validator
 
 
 inputs = (('Aux Propulsion', 'NumAuxProps'), ('Wing', 'SpanRadiusRatio'), ('Main Rotor', 'DiskLoading'), ('Main Rotor', 'Solidity'), ('Main Rotor', 'TipSpeed'))
-inputRanges = ((1, 1), (0., 4.), (2., 30.), (.05, .15), (400., 800.))
+inputRanges = ((0, 1), (0., 4.), (2., 30.), (.05, .15), (400., 800.))
 
 missionInputs = (('Segment 2', 'Distance'), ('Segment 2', 'Speed'))
 missionInputRanges = ((300., 1000.), (150., 300.))
@@ -49,12 +49,12 @@ inUseFile = inUseFilePrefix + computerName
 lastState = 'quit'
 
 class Worker(multiprocessing.Process):
-    
+
     def __init__(self, task_queue, result_queue):
         multiprocessing.Process.__init__(self)
         self.tasks = task_queue
         self.results = result_queue
-        
+
     def run(self):
         while True:
             task = self.tasks.get()
@@ -66,10 +66,11 @@ class Worker(multiprocessing.Process):
             self.results.put(flatdict)
 
 class Task(object):
-    def __init__(self, vconfig, mconfig, airfoildata):
+    def __init__(self, vconfig, mconfig, airfoildata_mainRotor, airfoildata_auxProp):
         self.vconfig = vconfig
         self.mconfig = mconfig
-        self.airfoildata = airfoildata
+        self.airfoildata_mainRotor = airfoildata_mainRotor
+        self.airfoildata_auxProp = airfoildata_auxProp
     def __call__(self):
         vconfig = ConfigObj(self.vconfig)
         mconfig = ConfigObj(self.mconfig)
@@ -85,7 +86,7 @@ class Task(object):
             else:
                 val = random.uniform(missionInputRanges[i][0], missionInputRanges[i][1])
             mconfig[missionInputs[i][0]][missionInputs[i][1]] = val
-        vehicle = SizedVehicle(vconfig, mconfig, self.airfoildata)
+        vehicle = SizedVehicle(vconfig, mconfig, self.airfoildata_mainRotor, self.airfoildata_auxProp)
         sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object, or False if it wasn't able to converge properly.
         if sizedVehicle:
             sizedVehicle.generatePowerCurve()
@@ -162,14 +163,16 @@ if __name__ == '__main__':
 
     while os.path.isfile(runFileFolder+idleFile) and not os.path.isfile(runFileFolder + killFile):
         if os.path.isfile(runFileFolder+activelyRunFile) and not os.path.isfile(runFileFolder+killFile)  and not os.path.isfile(runFileFolder+forceIdleFile):
-            v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
+            v = ConfigObj('Config/vehicle_s92.cfg', configspec='Config/vehicle.configspec')
             m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
             vvdt = Validator()
             v.validate(vvdt)
             mvdt = Validator()
             m.validate(mvdt)
-            c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
-            airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+            c81File_mainRotor = 'Config/%s'%v['Main Rotor']['AirfoilFile']
+            c81File_auxProp = 'Config/%s'%v['Aux Propulsion']['AirfoilFile']
+            airfoildata_mainRotor = np.genfromtxt(c81File_mainRotor, skip_header=0, skip_footer=0) # read in the airfoil file
+            airfoildata_auxProp = np.genfromtxt(c81File_auxProp, skip_header=0, skip_footer=0) # read in the airfoil file
             updateStatus('starting')
             if os.path.isfile(runFileFolder+inUseFile):
                 numworkers = multiprocessing.cpu_count() - 1
@@ -193,7 +196,7 @@ if __name__ == '__main__':
             totalRows = 0
             keepRunning = True
             outstandingTasks = 1
-            tasks.put(Task(v, m, airfoildata))
+            tasks.put(Task(v, m, airfoildata_mainRotor, airfoildata_auxProp))
             with open(fileName, 'wb') as f:
                 while outstandingTasks>0:
                     # check if we should stop
@@ -201,7 +204,7 @@ if __name__ == '__main__':
                     # add tasks to the queue if we're running low
                     if outstandingTasks<numworkers and keepRunning:
                         for i in xrange(numworkers):
-                            tasks.put(Task(v, m, airfoildata))
+                            tasks.put(Task(v, m, airfoildata_mainRotor, airfoildata_auxProp))
                             outstandingTasks += 1
                     # update status output
                     updateStatus('running' if keepRunning else 'stopping', goodRows, totalRows, outstandingTasks=outstandingTasks)

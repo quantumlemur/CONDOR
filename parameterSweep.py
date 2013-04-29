@@ -27,7 +27,7 @@ TipSpeedrange = [400, 800]
 GWrange = [15000, 45000]
 
 
-numPerParam = 5
+numPerParam = 10
 sweeplimits = [[100, 250], [300, 1000]] # speed, range
 baselineRange = 544.
 baselineSpeed = 153.
@@ -62,25 +62,26 @@ GWtickhighpadding = 4000
 MRPtickspacing = 250
 tickresolution = 1000
 
-splitFourPlots = False
-displayPlots = True
-saveData = True
+splitFourPlots = True
+displayPlots = False
+saveData = False
 saveFigures = True
 annotatePlots = True
-showTitle = True
+showTitle = False
+smoothPlots = False
 
-generateNewBaseline = True
+generateNewBaseline = False
 generateNewData = True
 
 plotScalingPlots = False
 plotPerformanceCurve = False
 
-plotRangeSpeedContour = True
+plotRangeSpeedContour = False
 plotWeightImprovements = False
 plotDragImprovements = False
 plotSFCImprovements = False
 plotAllImprovements = False
-plotSweepContours = ['TipSpeed']#['Solidity', 'DiskLoading', 'TipSpeed', 'SpanRadiusRatio']
+plotSweepContours = ['SpanRadiusRatio'] #, 'DiskLoading', 'TipSpeed', 'SpanRadiusRatio']
 plotExtraContours = False
 
 
@@ -305,6 +306,15 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
 
     plot = plt.subplot(1, 1, 1)
     plot.tick_params(labelsize=axislabelfontsize)
+    if saveData: print 'Saving as Output/Data/%sContourData' % filename
+    if saveData: np.savez('Output/Data/%sContourData' % filename, SPEED=SPEED, RANGE=RANGE, GW=GW, GWN=GWN)
+    if smoothPlots:
+        GW[~np.isfinite(GW)] = 100000
+        SPEED = scipy.ndimage.zoom(SPEED, 2)
+        RANGE = scipy.ndimage.zoom(RANGE, 2)
+        GW = scipy.ndimage.zoom(GW, 2)
+
+
     CS = plt.contourf(SPEED, RANGE, GW, GWN)
     cb = plt.colorbar(CS)
     cb.ax.tick_params(labelsize=axislabelfontsize)
@@ -339,7 +349,7 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
                 s = '{:.1%} GW Improvement'.format(percentage)
                 labeltextcolor = goodcolor
                 marker = goodmarker
-            if newGW != baselineGW:
+            if abs(percentage) > .001:
                 plt.plot([baselineSpeed], [baselineRange], marker, markersize=pointmarkersize)
                 plt.text(baselineSpeed+singleHoffset, baselineRange+singleVoffset, s, fontweight='bold', fontsize=labelfontsize, color=labeltextcolor, bbox={'facecolor':labelboxcolor, 'edgecolor':labelboxcolor, 'alpha':labelalpha, 'pad':labelpad})
 
@@ -359,8 +369,6 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
     plt.tight_layout()
     if saveFigures: pylab.savefig('Output/Figures/%sContour.png' % filename, bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
-    if saveData: print 'Saving as Output/Data/%sContourData' % filename
-    if saveData: np.savez('Output/Data/%sContourData' % filename, SPEED=SPEED, RANGE=RANGE, GW=GW, GWN=GWN)
 
 
 def SweepContours(baseline):
@@ -428,7 +436,7 @@ def SweepContours(baseline):
                 (pos, vc) = results.get()
                 GW[pos[2]][pos[0]][pos[1]] = vc['Sizing Results']['SizedGrossWeight'] if vc else float('nan')
                 MCP[pos[2]][pos[0]][pos[1]] = vc['Powerplant']['MCP'] if vc else float('nan')
-                extraContours[pos[2]][pos[0]][pos[1]] = vc['Performance'][extraContour] if vc else float('nan')
+                # extraContours[pos[2]][pos[0]][pos[1]] = vc['Performance'][extraContour] if vc else float('nan')
                 # smoothedGW[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
                 # smoothedMCP[DLi] = scipy.ndimage.zoom(GW[DLi], 3)
 
@@ -446,6 +454,18 @@ def SweepContours(baseline):
         # extraContours = scipy.ndimage.zoom(extraContours, 3)
 
         GWN = baseline[3]
+
+
+        if saveData: print 'Saving as Output/Data/%sContourData' % sweepVar
+        if saveData: np.savez('Output/Data/%sContourData' % sweepVar, SPEED=SPEED, RANGE=RANGE, GW=GW, GWN=GWN, MCP=MCP, extraContours=extraContours)
+        if smoothPlots:
+            GW[~np.isfinite(GW)] = 999999999
+            SPEED = scipy.ndimage.zoom(SPEED, 3)
+            RANGE = scipy.ndimage.zoom(RANGE, 3)
+            GW = scipy.ndimage.zoom(GW, 3)
+            extraContours = scipy.ndimage.zoom(extraContours, 3)
+
+
         if not splitFourPlots:
             plt.figure(num=None, figsize=(doublefigW, doublefigH), dpi=figDPI, facecolor='w', edgecolor='k')
 
@@ -491,7 +511,7 @@ def SweepContours(baseline):
                         s = '{:.1%} GW Improvement'.format(percentage)
                         labeltextcolor = goodcolor
                         marker = goodmarker
-                    if newGW != baselineGW:
+                    if abs(percentage) > .001:
                         plt.plot([baselineSpeed], [baselineRange], marker, markersize=pointmarkersize)
                         plt.text(baselineSpeed+labelHoffset, baselineRange+labelVoffset, s, fontweight='bold', fontsize=labelfontsize, color=labeltextcolor, bbox={'facecolor':labelboxcolor, 'edgecolor':labelboxcolor, 'alpha':labelalpha, 'pad':labelpad})
             if splitFourPlots:
@@ -513,8 +533,6 @@ def SweepContours(baseline):
                 sV = sweepVar
             if saveFigures: pylab.savefig('Output/Figures/%sGWContour.png' % sV, bbox_inches=0, dpi=figDPI)
             if displayPlots: plt.show()
-        if saveData: print 'Saving as Output/Data/%sContourData' % sweepVar
-        if saveData: np.savez('Output/Data/%sContourData' % sweepVar, SPEED=SPEED, RANGE=RANGE, GW=GW, GWN=GWN, MCP=MCP, extraContours=extraContours)
 
 def PerformanceCurve():
     v = ConfigObj(vconfig)

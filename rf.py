@@ -98,8 +98,8 @@ if __name__ == '__main__':
     from configobj import ConfigObj
     from validate import Validator
     import numpy as np
-    v = ConfigObj('Config/vehicle_s92.cfg', configspec='Config/vehicle.configspec')
-    m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
+    v = ConfigObj('Config/vehicle_AHS.cfg', configspec='Config/vehicle.configspec')
+    m = ConfigObj('Config/AHS_mission3.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
     v.validate(vvdt)
     mvdt = Validator()

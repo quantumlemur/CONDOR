@@ -10,7 +10,7 @@ from vehicle import Vehicle
 from configobj import ConfigObj
 from validate import Validator
 
-mission = 3
+mission = 1
 halted = False
 tasks = multiprocessing.JoinableQueue()
 queuedtasks = []
@@ -18,8 +18,8 @@ results = multiprocessing.Queue()
 
 
 numPerAxis = 20
-ranges = np.linspace(0, 1500, numPerAxis)
-payloads = np.linspace(0, 14000, numPerAxis)
+ranges = np.linspace(0, 1000, numPerAxis)
+payloads = np.linspace(0, 12000, numPerAxis)
 
 startTime = time.time() - 1 # subtract one second so we don't divide by zero on the first update
 
@@ -49,10 +49,11 @@ class Worker(multiprocessing.Process):
             self.results.put((vconfig, i, j))
 
 class Task(object):
-    def __init__(self, vconfig, mconfig, airfoildata, range, payload, i, j):
+    def __init__(self, vconfig, mconfig, airfoildata_mainRotor, airfoildata_auxProp, range, payload, i, j):
         self.vconfig = vconfig
         self.mconfig = mconfig
-        self.airfoildata = airfoildata
+        self.airfoildata_mainRotor = airfoildata_mainRotor
+        self.airfoildata_auxProp = airfoildata_auxProp
         self.payload = payload
         self.range = range
         self.i = i
@@ -66,7 +67,7 @@ class Task(object):
         mconfig['Segment 2']['PayloadWeight'] = self.payload
         mconfig['Segment 3']['PayloadWeight'] = self.payload
         mconfig['Segment 4']['PayloadWeight'] = self.payload
-        vehicle = Vehicle(vconfig, mconfig, 34000., self.airfoildata)
+        vehicle = Vehicle(vconfig, mconfig, 34000., self.airfoildata_mainRotor, self.airfoildata_auxProp)
         vehicle.flyMission()
         return (vehicle.vconfig, self.i, self.j)
 
@@ -96,14 +97,16 @@ def fmtTime(total):
 if __name__ == '__main__':
 
 
-    v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
+    v = ConfigObj('Config/vehicle_AHS.cfg', configspec='Config/vehicle.configspec')
     m = ConfigObj('Config/AHS_mission%d.cfg' % mission, configspec='Config/mission.configspec')
     vvdt = Validator()
     v.validate(vvdt)
     mvdt = Validator()
     m.validate(mvdt)
-    c81File='Config/%s'%v['Main Rotor']['AirfoilFile']
-    airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+    c81File_mainRotor = 'Config/%s'%v['Main Rotor']['AirfoilFile']
+    c81File_auxProp = 'Config/%s'%v['Aux Propulsion']['AirfoilFile']
+    airfoildata_mainRotor = np.genfromtxt(c81File_mainRotor, skip_header=0, skip_footer=0) # read in the airfoil file
+    airfoildata_auxProp = np.genfromtxt(c81File_auxProp, skip_header=0, skip_footer=0) # read in the airfoil file
     numworkers = multiprocessing.cpu_count()
     workers = [Worker(tasks, results) for i in xrange(numworkers)]
     for w in workers:
@@ -117,7 +120,7 @@ if __name__ == '__main__':
 
     for i in xrange(len(ranges)):
         for j in xrange(len(payloads)):
-            tasks.put(Task(v, m, airfoildata, ranges[i], payloads[j], i, j))
+            tasks.put(Task(v, m, airfoildata_mainRotor, airfoildata_auxProp, ranges[i], payloads[j], i, j))
             outstandingTasks += 1
     for i in xrange(numworkers):
         tasks.put(None)
@@ -142,21 +145,22 @@ if __name__ == '__main__':
         plt.figure(num=None, figsize=(6, 4), facecolor='w', edgecolor='k')
 
         # plot.tick_params(labelsize=axislabelfontsize)
-        ticks = np.arange(20000, 36000, 2000)
-        con = plt.contour(rangegrid, payloadgrid, weightgrid, ticks)
+        ticks = np.arange(12000, 16000, 1000)
+        con = plt.contour(rangegrid*1.852, payloadgrid*0.454, weightgrid*0.454, ticks)
         # cb = plt.colorbar(CS)
         # cb.ax.tick_params(labelsize=axislabelfontsize)
         # CS = plt.contour(baseline[0], baseline[1], baseline[2], GWN, colors='k')
-        plt.clabel(con, inline=1, fmt='%1.f lb')
+        plt.clabel(con, inline=1, fmt='%1.f kg')
 
-        plt.xlabel('Total Range (nm)')
-        plt.ylabel('Mission Payload (lbs)')
+        plt.xlabel('Total Range (km)')
+        plt.ylabel('Mission Payload (kg)')
         if mission == 1:
-            plt.title('Mission %d (Fast Deployment / Rescue)' % mission)
+            plt.title('Mission %d' % mission)
         elif mission == 2:
-            plt.title('Mission %d (Aid Distribution)' % mission)
+            plt.title('Mission %d' % mission)
         elif mission == 3:
-            plt.title('Mission %d (SAR Evacuation)' % mission)
+            plt.title('Mission %d' % mission)
+        plt.axis([0, 3500, 0, 5000])
         plt.grid(True)
         plt.tight_layout()
         pylab.savefig('Output/Figures/Mission%d_PayloadRange.png' % mission, bbox_inches=0, dpi=600)
