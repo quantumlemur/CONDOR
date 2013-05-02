@@ -437,11 +437,17 @@ class Vehicle:
             else:
                 v['Main Rotor']['TipSpeed'] = 450
         else:
-            advancingLiftBalance = .8
+            advancingLiftBalance = .5
         if v['Condition']['Speed'] < 80:
-            v['Main Rotor']['TipSpeed'] = 750
+            advancingLiftBalance = .5
+            self.rotor.Vtip = v['Main Rotor']['TipSpeed']
+            self.rotor.omega = self.rotor.Vtip / v['Main Rotor']['Radius']
+            v['Main Rotor']['TipSpeed'] = self.rotor.Vtip
         else:
-            v['Main Rotor']['TipSpeed'] = 550
+            advancingLiftBalance = .95
+            self.rotor.Vtip = v['Main Rotor']['SlowedTipSpeed']
+            self.rotor.omega = self.rotor.Vtip / v['Main Rotor']['Radius']
+            v['Main Rotor']['TipSpeed'] = self.rotor.Vtip
 
         Density = v['Condition']['Density']
         V = v['Condition']['Speed'] * 1.687 # speed in feet per second
@@ -460,10 +466,10 @@ class Vehicle:
             WingCl = 0.
             WingCd = 0.
         WingDrag = .5 * WingCd * v['Wing']['WingArea'] * Density * V**2
-        WingDrag = 0.
+        # WingDrag = 0.
 
         # proportion out forward thrust between the aux prop and the rotors
-        BodyDrag = 10. * Density * V**1.45 * v['Body']['FlatPlateDrag'] #REMOVEME - change back to proper stuff
+        BodyDrag = .5 * Density * V**2 * v['Body']['FlatPlateDrag']
         TotalDrag = BodyDrag + WingDrag
         ForwardThrust = TotalDrag
         # v['Aux Propulsion']['NumAuxProps'] = 1
@@ -473,7 +479,7 @@ class Vehicle:
         else:
             ForwardThrust_auxprops = 0.
             ForwardThrust_perAuxprop = 0.
-        ForwardThrust_rotors = ForwardThrust *.2 # - ForwardThrust_auxprops   # REMOVEME
+        ForwardThrust_rotors = ForwardThrust - ForwardThrust_auxprops
         ForwardThrust_perRotor = ForwardThrust_rotors / v['Main Rotor']['NumRotors']
         if debug: pvar(locals(), ('ForwardThrust_perRotor', 'VerticalLift_perRotor', 'VerticalLift_wing'))
 
@@ -521,7 +527,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import matplotlib.pylab as pylab
     import numpy as np
-    v = ConfigObj('Config/vehicle_AHS.cfg', configspec='Config/vehicle.configspec')
+    v = ConfigObj('Config/vehicle_ah56.cfg', configspec='Config/vehicle.configspec')
     m = ConfigObj('Config/AHS_mission3.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
     v.validate(vvdt)
@@ -556,5 +562,6 @@ if __name__ == '__main__':
     plt.xlabel('Speed (kts)')
     plt.ylabel('Power (hp)')
     plt.tight_layout()
+    plt.grid(True)
     pylab.savefig('Output/Figures/PowerCurveCruise.png', bbox_inches=0, dpi=600)
     plt.show()
