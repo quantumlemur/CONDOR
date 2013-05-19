@@ -623,7 +623,7 @@ if __name__ == '__main__':
         debug = True
         plot = True
         animate = False
-        GW = 34000.
+        GW = 15000.
         V = 80.
         V *= 1.687
         horizM = 1.

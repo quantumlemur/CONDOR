@@ -1,7 +1,7 @@
 import sys
 import math
 import numpy as np
-from time import clock
+from time import time
 import scipy.ndimage
 import matplotlib.pylab as pylab
 import matplotlib.pyplot as plt
@@ -27,7 +27,7 @@ TipSpeedrange = [400, 800]
 GWrange = [15000, 45000]
 
 
-numPerParam = 10
+numPerParam = 8
 sweeplimits = [[100, 250], [300, 1000]] # speed, range
 baselineRange = 544.
 baselineSpeed = 153.
@@ -62,7 +62,7 @@ GWtickhighpadding = 4000
 MRPtickspacing = 250
 tickresolution = 1000
 
-splitFourPlots = True
+splitFourPlots = False
 displayPlots = False
 saveData = False
 saveFigures = True
@@ -81,7 +81,7 @@ plotWeightImprovements = False
 plotDragImprovements = False
 plotSFCImprovements = False
 plotAllImprovements = False
-plotSweepContours = ['SpanRadiusRatio'] #, 'DiskLoading', 'TipSpeed', 'SpanRadiusRatio']
+plotSweepContours = ['SlowedTipSpeed', 'Solidity'] #['Solidity', 'DiskLoading', 'SlowedTipSpeed', 'SpanRadiusRatio']
 plotExtraContours = False
 
 
@@ -196,7 +196,7 @@ def GenerateBaselineData():
     GW = np.zeros(RANGE.shape)
     #MCP = np.zeros(RANGE.shape)
     num = output.shape[0]
-    tic = clock()
+    tic = time()
     outstandingTasks = 0
     # put tasks in queue
     for i in xrange(GW.shape[0]):
@@ -210,7 +210,7 @@ def GenerateBaselineData():
             outstandingTasks += 1
     # collect finished tasks
     for num in xrange(outstandingTasks):
-        showProgress(sys._getframe().f_code.co_name, tic, clock(), num, outstandingTasks)
+        showProgress(sys._getframe().f_code.co_name, tic, time(), num, outstandingTasks)
         m = ConfigObj(mconfig)
         v = ConfigObj(vconfig)
         m['Segment 2']['Distance'] = (float) (RANGE[i][j])
@@ -265,7 +265,7 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
     #MCP = np.zeros(RANGE.shape)
 
     num = output.shape[0]
-    tic = clock()
+    tic = time()
     if filename == 'Baseline':
         GW = baseline[2]
     else:
@@ -285,7 +285,7 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
                     outstandingTasks += 1
             # collect results back
             for num in xrange(outstandingTasks):
-                showProgress('%s - %s' % (sys._getframe().f_code.co_name, filename), tic, clock(), num, outstandingTasks)
+                showProgress('%s - %s' % (sys._getframe().f_code.co_name, filename), tic, time(), num, outstandingTasks)
                 (pos, vc) = results.get()
                 GW[pos[0]][pos[1]] = vc['Sizing Results']['SizedGrossWeight'] if vc else float('nan')
                 #MCP[i][j] = v['Powerplant']['MCP']
@@ -383,7 +383,7 @@ def SweepContours(baseline):
             section = 'Main Rotor'
             extraContour = 'MaxBladeLoadingSeen'
             title = r'$\sigma = %.2f$'
-        elif sweepVar == 'TipSpeed':
+        elif sweepVar == 'SlowedTipSpeed':
             Spread = [500., 600., 700., 800.]
             section = 'Main Rotor'
             extraContour = 'HoverCeiling'
@@ -417,7 +417,7 @@ def SweepContours(baseline):
         smoothedMCP = np.zeros((len(Spread)*3, RANGE.shape[0]*3, RANGE.shape[1]*3))
         totalrows = GW[0].shape[0]*len(Spread)
         rowcount = 0
-        tic = clock()
+        tic = time()
         if generateNewData:
             outstandingTasks = 0
             for DLi in xrange(len(Spread)):
@@ -432,7 +432,7 @@ def SweepContours(baseline):
                         tasks.put(Task(i, j, DLi, v, m, airfoildata_mainRotor, airfoildata_auxProp))
                         outstandingTasks += 1
             for num in xrange(outstandingTasks):
-                if i>0: showProgress('%s - %s' % (sys._getframe().f_code.co_name, sweepVar), tic, clock(), num, outstandingTasks)
+                if i>0: showProgress('%s - %s' % (sys._getframe().f_code.co_name, sweepVar), tic, time(), num, outstandingTasks)
                 (pos, vc) = results.get()
                 GW[pos[2]][pos[0]][pos[1]] = vc['Sizing Results']['SizedGrossWeight'] if vc else float('nan')
                 MCP[pos[2]][pos[0]][pos[1]] = vc['Powerplant']['MCP'] if vc else float('nan')
@@ -743,7 +743,7 @@ def fmtTime(total):
 #     for i in xrange(num):
 #         if i%100 == 0:
 #             tic = toc
-#             toc = clock()
+#             toc = time()
 #             elapsed = (toc - tic) / 60
 #             timePerRow = elapsed / 100
 #             remainingRows = num - i
@@ -805,7 +805,7 @@ def cartesian(arrays, out=None):
 if __name__ == '__main__':
 
 
-    startTime = clock()
+    startTime = time()
 
     tasks = multiprocessing.JoinableQueue()
     results = multiprocessing.Queue()
@@ -834,6 +834,6 @@ if __name__ == '__main__':
         tasks.put(None)
     tasks.join()
 
-    stopTime = clock()
+    stopTime = time()
     elapsed = stopTime - startTime
     if debug: print('Elapsed time: %f' % elapsed)

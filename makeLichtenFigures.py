@@ -9,10 +9,10 @@ from validate import Validator
 import random
 
 singlefigW = 3.4
-singlefigH = 2.5 * 2
+singlefigH = 2.5 # * 2
 doublefigW = 7
 doublefigH = 5
-figDPI = 600  # change back to 600?
+figDPI = 200  # change back to 600?
 inline_spacing = 5
 contourfontsize = 6
 titlefontsize = 10
@@ -41,9 +41,9 @@ tickresolution = 1000
 
 
 
-displayPlots = False
+displayPlots = True
 saveData = False
-saveFigures = True
+saveFigures = False
 annotatePlots = True
 
 plotScalingPlots = False
@@ -111,8 +111,9 @@ def PerformanceCurve():
     airfoildata_auxProp = np.genfromtxt(c81File_auxProp, skip_header=0, skip_footer=0) # read in the airfoil file
     s92 = Vehicle(v, m, 26000, airfoildata_mainRotor, airfoildata_auxProp)
     s92.generatePowerCurve()
+    s92.findMaxRange()
+    s92.findMaxSpeed()
     s92.write()
-    # v['Simulation']['PowerCurveResolution'] = 1
     s92_V = np.array([50.1073, 60.2146, 69.9122, 80.0195, 90.1268, 100.098, 110.205, 120.312, 127.415, 137.249, 144.624, 151.59, 156.644, 163.2, 167.98])
     s92_fuel = np.array([1240.51, 1156.96, 1113.92, 1096.2, 1103.8, 1129.11, 1177.22, 1240.51, 1301.27, 1410.13, 1518.99, 1655.7, 1772.15, 1972.15, 2134.18])
     s92_HP = 6.68896*(2452-np.sqrt(6012300-1495*s92_fuel))
@@ -122,12 +123,9 @@ def PerformanceCurve():
     fuelSL = sfcSL * powerSL
 
     plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
-    plt.subplot(211)
+    plt.subplot(221)
     plt.plot(s92.vconfig['Power Curve']['Speeds'], powerSL)
     plt.plot(s92_V, s92_HP, marker='o', markersize=3, linestyle='')
-    # plt.plot(s92.vconfig['Power Curve']['Speeds'], s92.vconfig['Power Curve']['parasite'])
-    # plt.plot(s92.vconfig['Power Curve']['Speeds'], s92.vconfig['Power Curve']['induced'])
-    # plt.plot(s92.vconfig['Power Curve']['Speeds'], s92.vconfig['Power Curve']['profile'])
     plt.axis([0, 180, 1500, 5000])
     #plt.legend(('Predicted', 'Published', 'parasite', 'induced', 'profile'), fontsize=labelfontsize)
     plt.tick_params(labelsize=axislabelfontsize)
@@ -137,7 +135,7 @@ def PerformanceCurve():
     plt.tight_layout()
     plt.grid(True)
 
-    plt.subplot(212)
+    plt.subplot(222)
     vconfig = ConfigObj('Config/vehicle_xh59.cfg', configspec='Config/vehicle.configspec')
     vconfig.validate(vvdt)
     v = ConfigObj(vconfig)
@@ -148,20 +146,91 @@ def PerformanceCurve():
     airfoildata_auxProp = np.genfromtxt(c81File_auxProp, skip_header=0, skip_footer=0) # read in the airfoil file
     xh59 = Vehicle(v, m, 12500., airfoildata_mainRotor, airfoildata_auxProp)
     xh59.generatePowerCurve()
-    #xh59.write()
+    xh59.findMaxRange()
+    xh59.findMaxSpeed()
+    xh59.write()
     plt.plot(xh59.vconfig['Power Curve']['Speeds'], xh59.vconfig['Power Curve']['PowersSL'])
     xh59_V = np.array([0, 21.966997, 42.561056, 63.471947, 85.122112, 87.762376, 89.663366, 91.669967, 105.927393, 108.567657, 120.712871, 125.887789, 126.627063, 130.112211, 136.765677, 136.554455, 143.841584, 146.481848, 151.339934, 154.719472])
     xh59_HP = np.array([1414.285714, 1168.163265, 925.714286, 813.673469, 732.857143, 800.816327, 854.081633, 786.122449, 879.795918, 817.346939, 912.857143, 1129.591837, 1050.612245, 1002.857143, 1054.285714, 1206.734694, 1307.755102, 1434.489796, 1520.816327, 1647.55102])
     plt.plot(xh59_V, xh59_HP, marker='o', markersize=3, linestyle='')
-    # plt.plot(xh59.vconfig['Power Curve']['Speeds'], xh59.vconfig['Power Curve']['parasite'])
-    # plt.plot(xh59.vconfig['Power Curve']['Speeds'], xh59.vconfig['Power Curve']['induced'])
-    # plt.plot(xh59.vconfig['Power Curve']['Speeds'], xh59.vconfig['Power Curve']['profile'])
     plt.axis([0, 180, 500, 2000])
     #plt.legend(('Predicted', 'Published'), fontsize=labelfontsize)
     plt.tick_params(labelsize=axislabelfontsize)
     plt.xlabel('Airspeed (kts)', fontsize=labelfontsize)
     plt.ylabel('HP', fontsize=labelfontsize)
     plt.title('XH-59', fontsize=titlefontsize)
+    plt.tight_layout()
+    plt.grid(True)
+
+    plt.subplot(223)
+    vconfig = ConfigObj('Config/vehicle_ch47.cfg', configspec='Config/vehicle.configspec')
+    vconfig.validate(vvdt)
+    v = ConfigObj(vconfig)
+    m = ConfigObj(mconfig)
+    c81File_mainRotor = 'Config/%s'%vconfig['Main Rotor']['AirfoilFile']
+    airfoildata_mainRotor = np.genfromtxt(c81File_mainRotor, skip_header=0, skip_footer=0) # read in the airfoil file
+    c81File_auxProp = 'Config/%s'%vconfig['Aux Propulsion']['AirfoilFile']
+    airfoildata_auxProp = np.genfromtxt(c81File_auxProp, skip_header=0, skip_footer=0) # read in the airfoil file
+    ch47 = Vehicle(v, m, 54000., airfoildata_mainRotor, airfoildata_auxProp)
+    ch47.generatePowerCurve()
+    ch47.findMaxRange()
+    ch47.findMaxSpeed()
+    #ch47.write()
+    plt.plot(ch47.vconfig['Power Curve']['Speeds'], ch47.vconfig['Power Curve']['PowersSL'])
+
+    ch_47_V = np.array([59.966790, 69.955234, 79.920862, 90.124157, 100.039590, 110.188126, 119.783755, 129.870688])
+    ch_47_HP = np.array([4169.052997, 3951.635574, 3840.705790, 3841.611245, 3964.954268, 4221.430057, 4616.293344, 5160.285760])
+
+    ch_47_V_alt = np.array([49.964656, 53.389711, 57.343716, 62.343072, 67.859969, 72.585153, 78.612748, 85.682271, 93.265914, 100.57766, 105.26862, 109.17357, 113.33558, 117.49531, 120.08416, 123.46016, 127.34116, 129.923165  ])
+    ch_47_HP_alt = np.array([4450.363004, 4338.852801, 4200.767121, 4068.098691, 3962.098604, 3887.975158, 3840.589706, 3814.594649, 3831.241082, 3895.783736, 3981.391749, 4072.254495, 4184.437985, 4307.270239, 4435.287574, 4552.725795, 4755.400562, 4915.364189])
+
+    plt.plot(ch_47_V, ch_47_HP, marker='o', markersize=3, linestyle='')
+    plt.axis([0, 180, 3000, 6000])
+    #plt.legend(('Predicted', 'Published'), fontsize=labelfontsize)
+    plt.tick_params(labelsize=axislabelfontsize)
+    plt.xlabel('Airspeed (kts)', fontsize=labelfontsize)
+    plt.ylabel('HP', fontsize=labelfontsize)
+    plt.title('CH-47', fontsize=titlefontsize)
+    plt.tight_layout()
+    plt.grid(True)
+
+    plt.subplot(224)
+    vconfig = ConfigObj('Config/vehicle_ch47-347.cfg', configspec='Config/vehicle.configspec')
+    vconfig.validate(vvdt)
+    v = ConfigObj(vconfig)
+    m = ConfigObj(mconfig)
+    c81File_mainRotor = 'Config/%s'%vconfig['Main Rotor']['AirfoilFile']
+    airfoildata_mainRotor = np.genfromtxt(c81File_mainRotor, skip_header=0, skip_footer=0) # read in the airfoil file
+    c81File_auxProp = 'Config/%s'%vconfig['Aux Propulsion']['AirfoilFile']
+    airfoildata_auxProp = np.genfromtxt(c81File_auxProp, skip_header=0, skip_footer=0) # read in the airfoil file
+    ch47_347 = Vehicle(v, m, 45000., airfoildata_mainRotor, airfoildata_auxProp)
+    ch47_347.generatePowerCurve()
+    ch47_347.findMaxRange()
+    ch47_347.findMaxSpeed()
+    #ch47_347.write()
+    plt.plot(ch47_347.vconfig['Power Curve']['Speeds'], ch47_347.vconfig['Power Curve']['PowersSL'])
+
+
+    ch_47_347_V = np.array([49.722760, 56.252532, 62.187081, 68.241735, 75.842437, 84.277983, 91.408871, 97.472955, 107.11309, 115.45151, 122.36576, 130.12487, 136.81718, 142.67818, 146.74880, 150.94070, 154.53679, 157.05606])
+    ch_47_347_HP = np.array([4643.003656, 4526.202972, 4403.491978, 4292.871891, 4181.861387, 4094.882537, 4044.596857, 4030.944283, 4101.237321, 4238.525876, 4406.477164, 4701.488089, 5033.132119, 5377.107312, 5654.867821, 5956.840177, 6246.841754, 6470.448454])
+
+
+    ch_47_347_V_alt = np.array([49.477716, 59.562914, 70.250995, 79.879345, 90.226558, 99.987388, 110.46885, 120.00715, 131.22633, 140.30601, 149.87614, 160.42066])
+    ch_47_347_HP_alt = np.array([3346.093204, 3101.121697, 2940.846604, 2889.930251, 2893.377931, 2981.822345, 3142.812202, 3388.888889, 3798.177805, 4220.128237, 4793.470280, 5602.930378])
+
+    #ch_47_347_V = np.array([69.999725, 79.976762, 90.191464, 100.38905, 110.04058, 119.93548, 130.06576, 140.162965])
+    #ch_47_347_HP = np.array([3743.984677, 3579.811073, 3527.472708, 3555.000073, 3688.968643, 3908.150541, 4249.816442, 4745.889420])
+
+    # ch_47_347_V_alt = np.array([60.302565, 67.650823, 74.206227, 84.163869, 93.846199, 103.51369, 112.12101, 117.32609, 123.04643, 127.72028, 132.90939, 136.53675, 140.42002, 144.048522  ])
+    # ch_47_347_HP_alt = np.array([3822.991386, 3717.153816, 3648.517270, 3574.858160, 3565.068417, 3624.495640, 3747.722579, 3875.972082, 4041.538692, 4207.012435, 4409.803286, 4575.184162, 4767.210165, 4927.266659])
+
+    plt.plot(ch_47_347_V_alt, ch_47_347_HP_alt, marker='o', markersize=3, linestyle='')
+    plt.axis([0, 180, 2000, 6000])
+    #plt.legend(('Predicted', 'Published'), fontsize=labelfontsize)
+    plt.tick_params(labelsize=axislabelfontsize)
+    plt.xlabel('Airspeed (kts)', fontsize=labelfontsize)
+    plt.ylabel('HP', fontsize=labelfontsize)
+    plt.title('CH-47 Model 347', fontsize=titlefontsize)
     plt.tight_layout()
     plt.grid(True)
 

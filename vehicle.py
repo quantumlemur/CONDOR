@@ -52,7 +52,6 @@ class Vehicle:
         v['Wing']['WingArea'] = v['Wing']['WingSpan'] * v['Wing']['WingChord']
         v['Wing']['WingAspectRatio'] = v['Wing']['WingSpan'] / v['Wing']['WingChord']
 
-        v['Weights']['EmptyWeight'] = 17756 # GW * v['Weights']['BaselineEmptyWeightFraction'] # REMOVEME
         v['Sizing Results']['GrossWeight'] = GW
         v['Sizing Results']['CouldTrim'] = True
         v['Sizing Results']['MisSize'] = float('nan')
@@ -152,7 +151,7 @@ class Vehicle:
 
     def altitudePowerCurve(self):
         v = self.vconfig
-        v['Condition']['Weight'] = self.GW
+        v['Condition']['Weight'] = self.GWhg
         speed = 100.
         powers = []
         altitudes = [0]
@@ -260,7 +259,7 @@ class Vehicle:
         v = self.vconfig
         # TODO:  Insert partial-power SFC
         #return v['Powerplant']['SFC']
-        return v['Powerplant']['SFC'] # -0.00001495*power + .4904 # right now this is the GE CT7-8 engine, in the S-92.  Put it back to a generic scaling using v['Powerplant']['SFC'] !
+        return -0.00001495*power + .4904 # right now this is the GE CT7-8 engine, in the S-92.  Put it back to a generic scaling using v['Powerplant']['SFC'] !
 
     def speedOfSound(self, density):
         # look at costello notes, RotorcraftPerformance, p.7 for better equation
@@ -304,7 +303,7 @@ class Vehicle:
                 POWERmaxr = powers[i]
         if debug:  print speeds
         if debug:  print powers
-        fuelweight = 10000. #self.GW - v['Weights']['EmptyWeightFraction']*self.GW - v['Weights']['UsefulLoad']  # REMOVEME # change back to normal
+        fuelweight = v['Weights']['MaxAvailableFuelWeight'] # self.GW - v['Weights']['EmptyWeightFraction']*self.GW - v['Weights']['UsefulLoad']  # REMOVEME # change back to normal
         hourstoempty = fuelweight / (self.SFC(POWERmaxr) * POWERmaxr)
         v['Performance']['SFCatMaxRange'] = self.SFC(POWERmaxr)
         v['Performance']['MaxRange'] = hourstoempty * SPEEDmaxr
@@ -430,21 +429,14 @@ class Vehicle:
         v = self.vconfig
 
         # REMOVEME
-        if v['Main Rotor']['NumRotors'] > 1:
-            advancingLiftBalance = .9
-            if v['Condition']['Speed'] < 80:
-                v['Main Rotor']['TipSpeed'] = 750
-            else:
-                v['Main Rotor']['TipSpeed'] = 450
-        else:
-            advancingLiftBalance = .5
+        advancingLiftBalance = .5
         if v['Condition']['Speed'] < 80:
-            advancingLiftBalance = .5
             self.rotor.Vtip = v['Main Rotor']['TipSpeed']
             self.rotor.omega = self.rotor.Vtip / v['Main Rotor']['Radius']
             v['Main Rotor']['TipSpeed'] = self.rotor.Vtip
         else:
-            advancingLiftBalance = .95
+            if v['Main Rotor']['NumRotors'] > 1:
+                advancingLiftBalance = .8
             self.rotor.Vtip = v['Main Rotor']['SlowedTipSpeed']
             self.rotor.omega = self.rotor.Vtip / v['Main Rotor']['Radius']
             v['Main Rotor']['TipSpeed'] = self.rotor.Vtip
@@ -488,10 +480,10 @@ class Vehicle:
         # while math.isnan(singleRotorPower) and advancingLiftBalance<1:
         #     advancingLiftBalance += .1
         #     singleRotorPower = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perRotor, Fz=VerticalLift_perRotor, maxSteps=v['Simulation']['MaxSteps'], advancingLiftBalance=advancingLiftBalance)
-        singleRotorPower = singleRotorPower / (1-v['Body']['DownwashFactor'])
+        singleRotorPower = singleRotorPower / (1-v['Body']['DownwashFactor']) * v['Main Rotor']['Kint']  # REMOVEME # fix Kint?
 
         # calculate prop power
-        if ForwardThrust_perAuxprop > 0:
+        if ForwardThrust_perAuxprop>0:
             singlePropPower = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perAuxprop, Fz=.1, maxSteps=v['Simulation']['MaxSteps'], advancingLiftBalance=.5)
         else:
             singlePropPower = 0.
@@ -506,6 +498,8 @@ class Vehicle:
         v['Performance']['MaxBladeLoadingSeen'] = max(v['Performance']['MaxBladeLoadingSeen'], math.sqrt(ForwardThrust_perRotor**2+VerticalLift_perRotor**2)/(Density*v['Main Rotor']['DiskArea']*v['Main Rotor']['TipSpeed']**2))
 
         Pparasite = TotalDrag*V/550
+
+        Pparasite = singlePropPower
 
         return (totalPower, Pinduced, Pprofile, Pparasite)
 
