@@ -433,13 +433,13 @@ class Vehicle:
         if v['Condition']['Speed'] < 80:
             self.rotor.Vtip = v['Main Rotor']['TipSpeed']
             self.rotor.omega = self.rotor.Vtip / v['Main Rotor']['Radius']
-            v['Main Rotor']['TipSpeed'] = self.rotor.Vtip
+            #v['Main Rotor']['TipSpeed'] = self.rotor.Vtip
         else:
             if v['Main Rotor']['NumRotors'] > 1:
                 advancingLiftBalance = .8
             self.rotor.Vtip = v['Main Rotor']['SlowedTipSpeed']
             self.rotor.omega = self.rotor.Vtip / v['Main Rotor']['Radius']
-            v['Main Rotor']['TipSpeed'] = self.rotor.Vtip
+            #v['Main Rotor']['TipSpeed'] = self.rotor.Vtip
 
         Density = v['Condition']['Density']
         V = v['Condition']['Speed'] * 1.687 # speed in feet per second
@@ -495,7 +495,7 @@ class Vehicle:
         totalPower = singleRotorPower*v['Main Rotor']['NumRotors'] + singlePropPower*v['Aux Propulsion']['NumAuxProps'] + TotalDrag*V/550 # Is this right?  should the parasite power be just added on directly like this?
         totalPower = totalPower / (1-v['Antitorque']['AntitorquePowerFactor']) / (1-v['Powerplant']['TransmissionEfficiency'])
 
-        v['Performance']['MaxBladeLoadingSeen'] = max(v['Performance']['MaxBladeLoadingSeen'], math.sqrt(ForwardThrust_perRotor**2+VerticalLift_perRotor**2)/(Density*v['Main Rotor']['DiskArea']*v['Main Rotor']['TipSpeed']**2))
+        v['Performance']['MaxBladeLoadingSeen'] = max(v['Performance']['MaxBladeLoadingSeen'], math.sqrt(ForwardThrust_perRotor**2+VerticalLift_perRotor**2)/(Density*v['Main Rotor']['DiskArea']*self.rotor.Vtip**2))
 
         Pparasite = TotalDrag*V/550
 

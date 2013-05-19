@@ -1,11 +1,16 @@
+import matplotlib
+matplotlib.use('Agg')
+
+
 import sys
 import math
 import numpy as np
 from time import time
 import scipy.ndimage
-import matplotlib.pylab as pylab
+#import matplotlib.pylab as pylab
 import matplotlib.pyplot as plt
 import multiprocessing
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 from rf import SizedVehicle
@@ -27,16 +32,16 @@ TipSpeedrange = [400, 800]
 GWrange = [15000, 45000]
 
 
-numPerParam = 8
+numPerParam = 30
 sweeplimits = [[100, 250], [300, 1000]] # speed, range
-baselineRange = 544.
+baselineRange = 503.
 baselineSpeed = 153.
 
 singlefigW = 3.4
 singlefigH = 2.5
 doublefigW = 6.5
 doublefigH = 4.5
-figDPI = 600
+figDPI = 300
 inline_spacing = 5
 contourfontsize = 6
 titlefontsize = 8
@@ -71,17 +76,17 @@ showTitle = False
 smoothPlots = False
 
 generateNewBaseline = False
-generateNewData = True
+generateNewData = False
 
 plotScalingPlots = False
 plotPerformanceCurve = False
 
-plotRangeSpeedContour = False
-plotWeightImprovements = False
-plotDragImprovements = False
-plotSFCImprovements = False
-plotAllImprovements = False
-plotSweepContours = ['SlowedTipSpeed', 'Solidity'] #['Solidity', 'DiskLoading', 'SlowedTipSpeed', 'SpanRadiusRatio']
+plotRangeSpeedContour = True
+plotWeightImprovements = True
+plotDragImprovements = True
+plotSFCImprovements = True
+plotAllImprovements = True
+plotSweepContours = ['Solidity', 'DiskLoading', 'TipSpeed', 'SpanRadiusRatio']
 plotExtraContours = False
 
 
@@ -316,15 +321,14 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
 
 
     CS = plt.contourf(SPEED, RANGE, GW, GWN)
-    cb = plt.colorbar(CS)
-    cb.ax.tick_params(labelsize=axislabelfontsize)
-    CS = plt.contour(baseline[0], baseline[1], baseline[2], GWN, colors='k')
-    plt.clabel(CS, inline=1, fontsize=contourfontsize, fmt='%1.f')
+    CSb = plt.contour(baseline[0], baseline[1], baseline[2], GWN, colors='k')
+    plt.clabel(CSb, inline=1, fontsize=contourfontsize, fmt='%1.f')
 
     plt.xlabel('Ingress Speed (kts)', fontsize=labelfontsize)
     plt.ylabel('Mission Range (nm)', fontsize=labelfontsize)
     if showTitle: plt.title('Sized gross weight contours', fontsize=titlefontsize)
     plt.grid(True)
+
 
     if annotatePlots:
         # measure improvement over baseline
@@ -353,6 +357,11 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
                 plt.plot([baselineSpeed], [baselineRange], marker, markersize=pointmarkersize)
                 plt.text(baselineSpeed+singleHoffset, baselineRange+singleVoffset, s, fontweight='bold', fontsize=labelfontsize, color=labeltextcolor, bbox={'facecolor':labelboxcolor, 'edgecolor':labelboxcolor, 'alpha':labelalpha, 'pad':labelpad})
 
+    divider = make_axes_locatable(plt.gca())
+    cax = divider.append_axes("right", "5%", pad="3%")
+    cb = plt.colorbar(CS, cax=cax)
+    cb.ax.tick_params(labelsize=axislabelfontsize)
+
     #plot = plt.subplot(1, 2, 2)
     #plot.tick_params(labelsize=axislabelfontsize)
     #SPEED = scipy.ndimage.zoom(SPEED, 3)
@@ -367,7 +376,7 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
     #plt.grid(True)
 
     plt.tight_layout()
-    if saveFigures: pylab.savefig('Output/Figures/%sContour.png' % filename, bbox_inches=0, dpi=figDPI)
+    if saveFigures: plt.savefig('Output/Figures/%sContour.png' % filename, bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
 
 
@@ -383,7 +392,7 @@ def SweepContours(baseline):
             section = 'Main Rotor'
             extraContour = 'MaxBladeLoadingSeen'
             title = r'$\sigma = %.2f$'
-        elif sweepVar == 'SlowedTipSpeed':
+        elif sweepVar == 'TipSpeed':
             Spread = [500., 600., 700., 800.]
             section = 'Main Rotor'
             extraContour = 'HoverCeiling'
@@ -429,6 +438,7 @@ def SweepContours(baseline):
                         m['Segment 2']['Speed'] = (float) (SPEED[i][j])
                         v['Wing']['MaxSpeed'] = (float) (SPEED[i][j])
                         v[section][sweepVar] = Spread[DLi]
+                        v['Main Rotor']['SlowedTipSpeed'] = v['Main Rotor']['TipSpeed']
                         tasks.put(Task(i, j, DLi, v, m, airfoildata_mainRotor, airfoildata_auxProp))
                         outstandingTasks += 1
             for num in xrange(outstandingTasks):
@@ -478,17 +488,15 @@ def SweepContours(baseline):
             plot.tick_params(labelsize=axislabelfontsize)
             # try:
             CS = plt.contourf(SPEED, RANGE, GW[DLi], GWN)
-            cb = plt.colorbar(CS)
-            cb.ax.tick_params(labelsize=axislabelfontsize)
-            CS = plt.contour(baseline[0], baseline[1], baseline[2], GWN, colors='k')
-            plt.clabel(CS, inline=1, fontsize=contourfontsize, fmt='%1.f')
-            if plotExtraContours and extraContour != 'Nothing':
-                CS = plt.contour(SPEED, RANGE, extraContours[DLi], colors='r')
-                plt.clabel(CS, inline=1, fontsize=contourfontsize, fmt='%.4f')
+            CSb = plt.contour(baseline[0], baseline[1], baseline[2], GWN, colors='k')
+            plt.clabel(CSb, inline=1, fontsize=contourfontsize, fmt='%1.f')
             plt.xlabel('Ingress Speed (kts)', fontsize=labelfontsize)
             plt.ylabel('Mission Range (nm)', fontsize=labelfontsize)
             if showTitle or not splitFourPlots: plt.title(title % Spread[DLi], fontsize=titlefontsize)
             plt.grid(True)
+            if plotExtraContours and extraContour != 'Nothing':
+                CS = plt.contour(SPEED, RANGE, extraContours[DLi], colors='r')
+                plt.clabel(CS, inline=1, fontsize=contourfontsize, fmt='%.4f')
             if annotatePlots:
                 # measure improvement over baseline
                 m = ConfigObj(mconfig)
@@ -514,13 +522,17 @@ def SweepContours(baseline):
                     if abs(percentage) > .001:
                         plt.plot([baselineSpeed], [baselineRange], marker, markersize=pointmarkersize)
                         plt.text(baselineSpeed+labelHoffset, baselineRange+labelVoffset, s, fontweight='bold', fontsize=labelfontsize, color=labeltextcolor, bbox={'facecolor':labelboxcolor, 'edgecolor':labelboxcolor, 'alpha':labelalpha, 'pad':labelpad})
+            divider = make_axes_locatable(plt.gca())
+            cax = divider.append_axes("right", "5%", pad="3%")
+            cb = plt.colorbar(CS, cax=cax)
+            cb.ax.tick_params(labelsize=axislabelfontsize)
             if splitFourPlots:
                 plt.tight_layout()
                 if plotExtraContours:
                     sV = '%sExtra' % sweepVar
                 else:
                     sV = sweepVar
-                if saveFigures: pylab.savefig('Output/Figures/%s_%f_%d_GWContour.png' % (sV, Spread[DLi], DLi), bbox_inches=0, dpi=figDPI)
+                if saveFigures: plt.savefig('Output/Figures/%s_%f_%d_GWContour.png' % (sV, Spread[DLi], DLi), bbox_inches=0, dpi=figDPI)
                 if displayPlots: plt.show()
             # except:
             #     print GW[DLi]
@@ -531,7 +543,7 @@ def SweepContours(baseline):
                 sV = '%sExtra' % sweepVar
             else:
                 sV = sweepVar
-            if saveFigures: pylab.savefig('Output/Figures/%sGWContour.png' % sV, bbox_inches=0, dpi=figDPI)
+            if saveFigures: plt.savefig('Output/Figures/%sGWContour.png' % sV, bbox_inches=0, dpi=figDPI)
             if displayPlots: plt.show()
 
 def PerformanceCurve():
@@ -557,7 +569,7 @@ def PerformanceCurve():
     plt.title('Predicted S-92 Power Curve', fontsize=titlefontsize)
     plt.grid(True)
 
-    if saveFigures: pylab.savefig('Output/Figures/S92PerformanceCurve.png', bbox_inches=0, dpi=figDPI)
+    if saveFigures: plt.savefig('Output/Figures/S92PerformanceCurve.png', bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
 
 
@@ -581,7 +593,7 @@ def ScalingPlots():
     plt.ylabel('Flat Plate Drag Area (sq ft)', fontsize=labelfontsize)
     plt.title('Flat Plate Drag Scaling', fontsize=titlefontsize)
     plt.tight_layout()
-    if saveFigures: pylab.savefig('Output/Figures/flatPlateDragScaling.png', bbox_inches=0, dpi=figDPI)
+    if saveFigures: plt.savefig('Output/Figures/flatPlateDragScaling.png', bbox_inches=0, dpi=figDPI)
     if displayPlots: plt.show()
 
     # engine weight
@@ -648,7 +660,7 @@ def ScalingPlots():
     plt.tight_layout()
 
     if displayPlots: plt.show()
-    if saveFigures: pylab.savefig('Output/Figures/WeightsAndSFCScaling.png', bbox_inches=0, dpi=figDPI)
+    if saveFigures: plt.savefig('Output/Figures/WeightsAndSFCScaling.png', bbox_inches=0, dpi=figDPI)
 
 
 # def SolidityContour(vconfig, mconfig, num, baseline):
