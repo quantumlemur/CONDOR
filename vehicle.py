@@ -72,8 +72,33 @@ class Vehicle:
         self.rotor_aux = Rotor(self.blade_aux, psiSegments=v['Simulation']['numBladeElementSegments'], Vtip=v['Aux Propulsion']['TipSpeed'], radius=v['Aux Propulsion']['Radius'], numblades=v['Aux Propulsion']['NumBlades'])
         self.scaleEngine()
         self.scaleWeights()
+        self.findCost()
         self.setMission(m)
 
+    def findCost(self):
+        v = self.vconfig
+        HarrisScullyPrice = 628.707 * (v['Main Rotor']['NumBlades']*v['Main Rotor']['NumRotors'])**0.2045 * v['Weights']['EmptyWeight']**0.4854 * v['Powerplant']['MRP']**0.5843
+        v['Economics']['HarrisScullyPrice'] = HarrisScullyPrice
+
+    def OEC(self):
+        v = self.vconfig
+        usefulLoad = v['Weights']['MaxAvailableFuelWeight']
+        sfc = v['Performance']['SFCatMaxRange']
+        fuelConsumption = v['Performance']['SFCatMaxRange'] * v['Performance']['PowerAtMaxRangeSpeed']
+        if v['Performance']['MaxRangeSpeed'] == 0.:
+            payload = 0.
+        else:
+            timeToRange = v['OEC']['BaselineRange'] / v['Performance']['MaxRangeSpeed']
+            fuelConsumed = fuelConsumption * timeToRange
+            payload = usefulLoad - fuelConsumed
+        v['OEC']['Payload'] = payload
+        pFactor = payload / v['OEC']['BaselinePayload']
+        rFactor = v['Performance']['MaxRange'] / v['OEC']['BaselineRange']
+        hFactor = v['Performance']['HoverCeiling'] / v['OEC']['BaselineHoverCeiling']
+        sFactor = v['Performance']['MaxSpeed'] / v['OEC']['BaselineSpeed']
+        cFactor = v['OEC']['BaselineCost'] / v['Economics']['HarrisScullyPrice']
+        v['OEC']['MCI'] = rFactor + hFactor + sFactor + pFactor
+        v['OEC']['OEC'] = rFactor + hFactor + sFactor + pFactor + cFactor
 
     def scaleWeights(self):
         v = self.vconfig
@@ -94,15 +119,15 @@ class Vehicle:
         improvedStructureWeightFraction = baselineStructureWeightFraction * (1-w['StructureWeightTechImprovementFactor'])
 
         # weight scaling
-        MCP = v['Powerplant']['MRP'] / 1.3
-        scaledEngineWeight = w['NumEngines']*((0.1054*(MCP/w['NumEngines'])**2.+358*(MCP/w['NumEngines'])+2.757*10.**4.)/((MCP/w['NumEngines'])+1180))
+        MRP = v['Powerplant']['MRP']
+        scaledEngineWeight = w['NumEngines']*((0.1054*(MRP/w['NumEngines'])**2.+358*(MRP/w['NumEngines'])+2.757*10.**4.)/((MRP/w['NumEngines'])+1180))
         try:
-            scaledDriveSystemWeight = (525.*(self.GW/1000.)**1.14)/((self.GW/MCP)**0.763*v['Main Rotor']['DiskLoading']**0.381)
+            scaledDriveSystemWeight = (525.*(self.GW/1000.)**1.14)/((self.GW/MRP)**0.763*v['Main Rotor']['DiskLoading']**0.381)
         except:
             scaledDriveSystemWeight = 999999999.
             print scaledDriveSystemWeight
-            print MCP
-        scaledWingWeight = 0.00272*self.GW**1.4/v['Main Rotor']['DiskLoading']**0.8*v['Wing']['SpanRadiusRatio']**0.8 * 0.8
+            print MRP
+        scaledWingWeight = 0.00272*self.GW**1.4 / v['Main Rotor']['DiskLoading']**0.8 * v['Wing']['SpanRadiusRatio']**0.8 * 0.8
         scaledStructureWeight = improvedStructureWeightFraction * self.GW
 
         v['Weights']['scaledEngineWeight'] = scaledEngineWeight * (1-v['Weights']['EngineWeightTechImprovementFactor'])
@@ -259,7 +284,8 @@ class Vehicle:
         v = self.vconfig
         # TODO:  Insert partial-power SFC
         #return v['Powerplant']['SFC']
-        return -0.00001495*power + .4904 # right now this is the GE CT7-8 engine, in the S-92.  Put it back to a generic scaling using v['Powerplant']['SFC'] !
+        return -0.00001495*power + v['Powerplant']['SFC'] - v['Powerplant']['MCP']*(-0.00001495)
+        # return -0.00001495*power + .4904 # right now this is the GE CT7-8 engine, in the S-92.  Put it back to a generic scaling using v['Powerplant']['SFC'] !
 
     def speedOfSound(self, density):
         # look at costello notes, RotorcraftPerformance, p.7 for better equation
@@ -324,22 +350,23 @@ class Vehicle:
                 maxSpeedPower = powers[i]
         v['Performance']['MaxSpeed'] = maxSpeed
         v['Performance']['PowerAtMaxSpeed'] = maxSpeedPower
+        v['Performance']['SFCatMaxSpeed'] = self.SFC(maxSpeedPower)
 
     def scaleEngine(self):
         """Scales the engine for high hot hover and fast cruise."""
         v = self.vconfig
         altitude = v['Engine Scaling']['RequiredHoverHeight']
-        # v['Condition']['Weight'] = self.GW
-        # v['Condition']['Density'] = self.density(altitude)
-        # v['Condition']['Speed'] = 0 # hover
-        # hoverpower = self.powerReq()
-        # if math.isnan(hoverpower):
-        #     self.recordTrimFailure()
-        #     hoverpower = 1.
-        # v['Engine Scaling']['HoverPowerAtAlt'] = hoverpower
-        # hoverpower = hoverpower * self.density(0) / self.density(altitude) # scale engine to sea level
-        # v['Engine Scaling']['HoverPower'] = hoverpower
-        hoverpower = 1.
+        v['Condition']['Weight'] = self.GW
+        v['Condition']['Density'] = self.density(altitude)
+        v['Condition']['Speed'] = 0 # hover
+        (hoverpower, Pinduced, Pprofile, Pparasite) = self.powerReq()
+        if math.isnan(hoverpower):
+            self.recordTrimFailure()
+            hoverpower = 1.
+        v['Engine Scaling']['HoverPowerAtAlt'] = hoverpower
+        hoverpower = hoverpower * self.density(0) / self.density(altitude) # scale engine to sea level
+        v['Engine Scaling']['HoverPower'] = hoverpower
+        # hoverpower = 1.
 
         # v['Condition']['Weight'] = self.GW
         # altitude = 13000.
@@ -362,14 +389,16 @@ class Vehicle:
         #     self.recordTrimFailure()
         #     cruisepower = 1.
         # cruisepower = cruisepower * self.density(0) / self.density(altitude) # scale engine to sea level
-        # v['Engine Scaling']['CruisePower'] = cruisepower
+        if 'Speeds' in v['Power Curve']:
+            cruisepower = v['Power Curve']['PowersSL'][-2]
+        else:
+            cruisepower = 1.
+        v['Engine Scaling']['CruisePower'] = cruisepower
 
-        # power = max(hoverpower, ceilingpower, cruisepower)
-        power = 7300  # REMOVEME - reinsert proper engine sizing
+        power = max(hoverpower, ceilingpower, cruisepower)
+        # power = 7300  # REMOVEME - reinsert proper engine sizing
         gamma = power / self.vconfig['Powerplant']['BaselineMRP']
         sfc = (-0.00932*gamma**2+0.865*gamma+0.445)/(gamma+0.301)*v['Powerplant']['BaselineSFC']
-
-
         v['Powerplant']['MRP'] = power * 1.3
         v['Powerplant']['MCP'] = power
         v['Powerplant']['SFC'] = sfc * (1-v['Powerplant']['SFCTechImprovementFactor'])
@@ -429,14 +458,19 @@ class Vehicle:
         v = self.vconfig
 
         # REMOVEME
-        advancingLiftBalance = .5
-        if v['Condition']['Speed'] < 80:
+        if v['Main Rotor']['NumRotors'] > 1:
+            advancingLiftBalance = .9
+            if v['Wing']['SpanRadiusRatio'] > 1:
+                advancingLiftBalance = .95
+        elif v['Wing']['SpanRadiusRatio'] > 1:
+            advancingLiftBalance = .8
+        else:
+            advancingLiftBalance = .6
+        if v['Condition']['Speed'] < 50:
             self.rotor.Vtip = v['Main Rotor']['TipSpeed']
             self.rotor.omega = self.rotor.Vtip / v['Main Rotor']['Radius']
             #v['Main Rotor']['TipSpeed'] = self.rotor.Vtip
         else:
-            if v['Main Rotor']['NumRotors'] > 1:
-                advancingLiftBalance = .8
             self.rotor.Vtip = v['Main Rotor']['SlowedTipSpeed']
             self.rotor.omega = self.rotor.Vtip / v['Main Rotor']['Radius']
             #v['Main Rotor']['TipSpeed'] = self.rotor.Vtip
@@ -484,7 +518,8 @@ class Vehicle:
 
         # calculate prop power
         if ForwardThrust_perAuxprop>0:
-            singlePropPower = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perAuxprop, Fz=.1, maxSteps=v['Simulation']['MaxSteps'], advancingLiftBalance=.5)
+            # singlePropPower = self.rotor.trim(tolerancePct=v['Simulation']['TrimAccuracyPercentage'], V=V, rho=Density, speedOfSound=self.speedOfSound(Density), Fx=ForwardThrust_perAuxprop, Fz=.1, maxSteps=v['Simulation']['MaxSteps'], advancingLiftBalance=.5)
+            singlePropPower = V*0.19458 + 73.7097 # REMOVEME
         else:
             singlePropPower = 0.
 

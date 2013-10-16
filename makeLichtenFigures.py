@@ -7,12 +7,13 @@ from vehicle import Vehicle
 from configobj import ConfigObj
 from validate import Validator
 import random
+from scipy.interpolate import interp1d
 
 singlefigW = 3.4
 singlefigH = 2.5 # * 2
 doublefigW = 7
 doublefigH = 5
-figDPI = 200  # change back to 600?
+figDPI = 600  # change back to 600?
 inline_spacing = 5
 contourfontsize = 6
 titlefontsize = 10
@@ -23,6 +24,7 @@ labelalpha = .8
 labelpad = 5
 labelHoffset = -20
 labelVoffset = 50
+linewidth = 3
 singleHoffset = 5
 singleVoffset = 20
 badcolor = '#bb1111'
@@ -41,14 +43,15 @@ tickresolution = 1000
 
 
 
-displayPlots = True
+displayPlots = False
 saveData = False
-saveFigures = False
+saveFigures = True
 annotatePlots = True
 
 plotScalingPlots = False
 plotRfPlot = False
-plotPerformanceCurve = True
+plotPerformanceCurve = False
+plotcross_config_plots = True
 
 
 
@@ -65,6 +68,66 @@ mvdt = Validator()
 mconfig.validate(mvdt)
 c81File='Config/%s'%vconfig['Main Rotor']['AirfoilFile']
 airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
+
+
+def cross_config_plots():
+
+    cost = np.array([0.5, 1, 1.5, 2, 3, 3.5, 4])
+    
+
+    data = [[[5, 7, 7.4, 7.6, 8.2, 8.5], [1, 1.6, 2.2, 2.9, 4], [2.5, 2.8, 3.1, 3.3, 3.4], [1, 4, 4.7, 4.84, 5.03]], 
+        [[2.5, 6, 7.8, 8.3, 9, 9.6], [0.5, 1.2, 2, 2.7, 4], [1.5, 2.6, 3, 3.1, 3.2], [0.2, 3, 4, 4.3, 4.5]],
+        [[4.2, 6.5, 8, 8.5, 9, 9.5, 9.9], [0.5, 1.3, 2.2, 3.2, 4.4, 4.5, 4.6], [2.5, 3, 3.3, 3.55, 4], [0.1, 3, 4.1, 4.2]],
+        [[4, 6.5, 8, 8.8, 10, 10.5, 10.8], [0.7, 1.5, 2.5, 3.5, 4.5, 4.7], [3, 3.8, 4.2, 4.4, 4.5, 4.5], [0, 3, 4, 4.2, 4.25]],
+        [[3.5, 6, 7.5, 8, 8.5, 9, 9.4], [0.3, 0.7, 1.2, 1.7, 3, 4, 4.3], [1.5, 2, 2.4, 2.7, 3.1, 3.2], [0.5, 3, 4.9, 5.3]],
+        [[3, 5, 6.5, 7.5, 9.5, 10.8, 11.4], [0.1, 0.6, 1.2, 1.8, 3.2, 4.2, 4.5], [1.5, 2, 2.3, 2.5, 2.8, 2.8, 2.8], [0.2, 2.5, 4.5, 4.9]]]
+
+    # originals:
+    # conventional = np.array([[5, 7, 7.2, 7.5, 8.2, 8.5, 7.5], [1, 1.5, 2.1, 3, 4, 3.4, 3], [2.5, 2.8, 3.1, 3.2, 3.2, 2.8, 2.5], [1, 4, 4.5, 4.8, 5, 4.5, 4]])
+    # prop = np.array([[2.5, 6, 7.8, 8.3, 9, 9.5, 8], [0.5, 1.2, 2, 2.7, 4, 3, 2], [1.5, 2.6, 3, 3.1, 3.2, 2.5, 2], [0.2, 4, 4.5, 4.5, 4.5, 4, 3.5]])
+    # wing = np.array([[4.2, 6.5, 8, 8.5, 9, 9.5, 9.5], [0.5, 1.4, 2.2, 3.2, 4.5, 4.5, 4.5], [2.5, 3, 3.3, 3.55, 4, 3.8, 3], [0.1, 4, 4.5, 5, 5, 5, 4]])
+    # propwing = np.array([[4, 6.5, 8, 8.5, 10, 10.5, 10.6], [0.7, 1.2, 2.5, 3.5, 4.5, 4.5, 4], [3, 3.8, 4.2, 4.3, 4.5, 4.5, 4], [0, 4, 4.2, 4.3, 4.3, 4, 3]])
+    # coax = np.array([[3.5, 5, 7.5, 8, 8.5, 9, 9], [0.3, 0.7, 1.2, 1.7, 3, 4, 4], [1.5, 2, 2.4, 2.7, 3.1, 3.2, 3], [0.5, 2, 5, 5, 4.8, 4.5, 4.2]])
+    # coaxprop = np.array([[3, 5, 6.5, 7.5, 9.5, 10.8, 11], [0.1, 0.7, 1.2, 2, 3.2, 4.2, 4.4], [1.5, 2, 2.2, 2.4, 2.8, 2.8, 2.8], [0.3, 1.5, 4.5, 4.8, 4.5, 4.5, 4]])
+
+    labels = ['Mission Capability Index', '500nm Payload', 'Max Range', 'Hover Ceiling']
+
+    first = True
+    plt.figure(num=None, figsize=(doublefigW, doublefigH), dpi=figDPI, facecolor='w', edgecolor='k')
+    for i in xrange(4):
+        plt.subplot(2, 2, i)
+        for configuration in data:
+            f2 = interp1d(cost[:len(configuration[i])], configuration[i], kind='cubic')
+            y = np.arange(.5, cost[:len(configuration[i])][-1], .1)
+            x = f2(y)
+            plt.plot(x, y, linewidth=linewidth)
+        if first:
+            plt.legend(('SMR', 'SMR+prop', 'SMR+wing', 'SMR+prop+wing', 'Coax', 'Coax+prop'))
+            plt.tick_params(color='#FFFFFF', labelcolor='#FFFFFF')
+            first = False
+        plt.tick_params(labelsize=axislabelfontsize)
+        plt.xlabel(labels[i])
+        plt.ylabel('Normalized Base Cost')
+        plt.axis([0, 6, .5, 4])
+    plt.tight_layout()
+    if saveFigures: pylab.savefig('Output/Figures/MCI_components.png', dpi=figDPI, bbox_inches=0)
+    if displayPlots: plt.show()
+
+    plt.figure(num=None, figsize=(doublefigW, doublefigH), dpi=figDPI, facecolor='w', edgecolor='k')
+    i = 0
+    for configuration in data:
+        f2 = interp1d(cost[:len(configuration[i])], configuration[i], kind='cubic')
+        y = np.arange(.5, cost[:len(configuration[i])][-1], .1)
+        x = f2(y)
+        plt.plot(x, y, linewidth=linewidth)
+    plt.legend(('SMR', 'SMR+prop', 'SMR+wing', 'SMR+prop+wing', 'Coax', 'Coax+prop'), loc=2)
+    plt.xlabel(labels[i])
+    plt.ylabel('Normalized Base Cost')
+    plt.axis([0, 12, .5, 4])
+
+    plt.tight_layout()
+    if saveFigures: pylab.savefig('Output/Figures/MCI.png', dpi=figDPI, bbox_inches=0)
+    if displayPlots: plt.show()
 
 
 def RfPlot():
@@ -111,9 +174,13 @@ def PerformanceCurve():
     airfoildata_auxProp = np.genfromtxt(c81File_auxProp, skip_header=0, skip_footer=0) # read in the airfoil file
     s92 = Vehicle(v, m, 26000, airfoildata_mainRotor, airfoildata_auxProp)
     s92.generatePowerCurve()
+    s92.scaleEngine()
+    s92.findHoverCeiling()
     s92.findMaxRange()
     s92.findMaxSpeed()
-    s92.write()
+    s92.findMaxEndurance()
+    s92.OEC()
+    #s92.write()
     s92_V = np.array([50.1073, 60.2146, 69.9122, 80.0195, 90.1268, 100.098, 110.205, 120.312, 127.415, 137.249, 144.624, 151.59, 156.644, 163.2, 167.98])
     s92_fuel = np.array([1240.51, 1156.96, 1113.92, 1096.2, 1103.8, 1129.11, 1177.22, 1240.51, 1301.27, 1410.13, 1518.99, 1655.7, 1772.15, 1972.15, 2134.18])
     s92_HP = 6.68896*(2452-np.sqrt(6012300-1495*s92_fuel))
@@ -132,6 +199,7 @@ def PerformanceCurve():
     plt.xlabel('Airspeed (kts)', fontsize=labelfontsize)
     plt.ylabel('HP', fontsize=labelfontsize)
     plt.title('S-92', fontsize=titlefontsize)
+    plt.locator_params(nbins=6)
     plt.tight_layout()
     plt.grid(True)
 
@@ -148,7 +216,7 @@ def PerformanceCurve():
     xh59.generatePowerCurve()
     xh59.findMaxRange()
     xh59.findMaxSpeed()
-    xh59.write()
+    # xh59.write()
     plt.plot(xh59.vconfig['Power Curve']['Speeds'], xh59.vconfig['Power Curve']['PowersSL'])
     xh59_V = np.array([0, 21.966997, 42.561056, 63.471947, 85.122112, 87.762376, 89.663366, 91.669967, 105.927393, 108.567657, 120.712871, 125.887789, 126.627063, 130.112211, 136.765677, 136.554455, 143.841584, 146.481848, 151.339934, 154.719472])
     xh59_HP = np.array([1414.285714, 1168.163265, 925.714286, 813.673469, 732.857143, 800.816327, 854.081633, 786.122449, 879.795918, 817.346939, 912.857143, 1129.591837, 1050.612245, 1002.857143, 1054.285714, 1206.734694, 1307.755102, 1434.489796, 1520.816327, 1647.55102])
@@ -159,6 +227,7 @@ def PerformanceCurve():
     plt.xlabel('Airspeed (kts)', fontsize=labelfontsize)
     plt.ylabel('HP', fontsize=labelfontsize)
     plt.title('XH-59', fontsize=titlefontsize)
+    plt.locator_params(nbins=6)
     plt.tight_layout()
     plt.grid(True)
 
@@ -185,12 +254,13 @@ def PerformanceCurve():
     ch_47_HP_alt = np.array([4450.363004, 4338.852801, 4200.767121, 4068.098691, 3962.098604, 3887.975158, 3840.589706, 3814.594649, 3831.241082, 3895.783736, 3981.391749, 4072.254495, 4184.437985, 4307.270239, 4435.287574, 4552.725795, 4755.400562, 4915.364189])
 
     plt.plot(ch_47_V, ch_47_HP, marker='o', markersize=3, linestyle='')
-    plt.axis([0, 180, 3000, 6000])
+    plt.axis([40, 140, 3000, 6000])
     #plt.legend(('Predicted', 'Published'), fontsize=labelfontsize)
     plt.tick_params(labelsize=axislabelfontsize)
     plt.xlabel('Airspeed (kts)', fontsize=labelfontsize)
     plt.ylabel('HP', fontsize=labelfontsize)
     plt.title('CH-47', fontsize=titlefontsize)
+    plt.locator_params(nbins=6)
     plt.tight_layout()
     plt.grid(True)
 
@@ -225,12 +295,13 @@ def PerformanceCurve():
     # ch_47_347_HP_alt = np.array([3822.991386, 3717.153816, 3648.517270, 3574.858160, 3565.068417, 3624.495640, 3747.722579, 3875.972082, 4041.538692, 4207.012435, 4409.803286, 4575.184162, 4767.210165, 4927.266659])
 
     plt.plot(ch_47_347_V_alt, ch_47_347_HP_alt, marker='o', markersize=3, linestyle='')
-    plt.axis([0, 180, 2000, 6000])
+    plt.axis([40, 180, 2000, 6000])
     #plt.legend(('Predicted', 'Published'), fontsize=labelfontsize)
     plt.tick_params(labelsize=axislabelfontsize)
     plt.xlabel('Airspeed (kts)', fontsize=labelfontsize)
     plt.ylabel('HP', fontsize=labelfontsize)
-    plt.title('CH-47 Model 347', fontsize=titlefontsize)
+    plt.title('Boeing Model 347', fontsize=titlefontsize)
+    plt.locator_params(nbins=6)
     plt.tight_layout()
     plt.grid(True)
 
@@ -342,3 +413,4 @@ if __name__ == '__main__':
     if plotScalingPlots: ScalingPlots()
     if plotRfPlot: RfPlot()
     if plotPerformanceCurve: PerformanceCurve()
+    if plotcross_config_plots: cross_config_plots()

@@ -32,9 +32,9 @@ TipSpeedrange = [400, 800]
 GWrange = [15000, 45000]
 
 
-numPerParam = 30
+numPerParam = 20
 sweeplimits = [[100, 250], [300, 1000]] # speed, range
-baselineRange = 503.
+baselineRange = 553.
 baselineSpeed = 153.
 
 singlefigW = 3.4
@@ -67,12 +67,12 @@ GWtickhighpadding = 4000
 MRPtickspacing = 250
 tickresolution = 1000
 
-splitFourPlots = False
+splitFourPlots = True
 displayPlots = False
 saveData = False
 saveFigures = True
 annotatePlots = True
-showTitle = False
+showTitle = True
 smoothPlots = False
 
 generateNewBaseline = False
@@ -81,12 +81,12 @@ generateNewData = False
 plotScalingPlots = False
 plotPerformanceCurve = False
 
-plotRangeSpeedContour = True
-plotWeightImprovements = True
-plotDragImprovements = True
-plotSFCImprovements = True
+plotRangeSpeedContour = False
+plotWeightImprovements = False
+plotDragImprovements = False
+plotSFCImprovements = False
 plotAllImprovements = True
-plotSweepContours = ['Solidity', 'DiskLoading', 'TipSpeed', 'SpanRadiusRatio']
+plotSweepContours = [] # ['Solidity', 'DiskLoading', 'TipSpeed', 'SpanRadiusRatio']
 plotExtraContours = False
 
 
@@ -255,125 +255,141 @@ def GenerateBaselineData():
 
 
 def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var=['Nothing'], value=[0]):
-    sweepvars = ['Speed', 'Range']
-    # pick the spreads of the variables we're going to sweep
-    sweepspreads = np.zeros((len(sweepvars), numPerParam))
-    for i in range(len(sweepvars)):
-        sweepspreads[i] = np.linspace(sweeplimits[i][0], sweeplimits[i][1], numPerParam)
-    # initialize the full-factorial array
-    output = cartesian(sweepspreads)
-    outs = np.zeros((output.shape[0], 1))
-    output = np.hstack((output, outs))
-    # set up the plotting grids
-    SPEED, RANGE, = np.meshgrid(sweepspreads[0], sweepspreads[1])
-    GW = np.zeros(RANGE.shape)
-    #MCP = np.zeros(RANGE.shape)
+    filenames = ['WeightImprovements', 'DragImprovements', 'SFCImprovements', 'AllImprovements']
+    titles = ['Weight Improvements', 'Drag Improvements', 'SFC Improvements', 'All Improvements']
+    sections = [['Weights', 'Weights', 'Weights', 'Weights'], ['Body'], ['Powerplant'], ['Weights', 'Weights', 'Weights', 'Weights', 'Body', 'Powerplant']]
+    varss = [['StructureWeightTechImprovementFactor', 'WingWeightTechImprovementFactor', 'EngineWeightTechImprovmentFactor', 'DriveSystemWeightTechImprovementFactor'], ['DragTechImprovementFactor'], ['SFCTechImprovementFactor'], ['StructureWeightTechImprovementFactor', 'WingWeightTechImprovementFactor', 'EngineWeightTechImprovmentFactor', 'DriveSystemWeightTechImprovementFactor', 'DragTechImprovementFactor', 'SFCTechImprovementFactor']]
+    values = [[.13, .05, .04, .13], [.23], [.205], [.13, .05, .04, .13, .23, .205]]
+    plt.figure(num=None, figsize=(doublefigW, doublefigH), dpi=figDPI, facecolor='w', edgecolor='k')
+    for which in xrange(4):
+        filename = filenames[which]
+        section = sections[which]
+        var = varss[which]
+        value = values[which]
+        title = titles[which]
 
-    num = output.shape[0]
-    tic = time()
-    if filename == 'Baseline':
-        GW = baseline[2]
-    else:
-        if generateNewData:
-            outstandingTasks = 0
-            # queue tasks
-            for i in xrange(GW.shape[0]):
-                for j in xrange(GW.shape[1]):
-                    m = ConfigObj(mconfig)
-                    v = ConfigObj(vconfig)
-                    m['Segment 2']['Distance'] = (float) (RANGE[i][j])
-                    m['Segment 2']['Speed'] = (float) (SPEED[i][j])
-                    v['Wing']['MaxSpeed'] = (float) (SPEED[i][j])
-                    for k in xrange(len(section)):
-                        v[section[k]][var[k]] = value[k]
-                    tasks.put(Task(i, j, 0, v, m, airfoildata_mainRotor, airfoildata_auxProp))
-                    outstandingTasks += 1
-            # collect results back
-            for num in xrange(outstandingTasks):
-                showProgress('%s - %s' % (sys._getframe().f_code.co_name, filename), tic, time(), num, outstandingTasks)
-                (pos, vc) = results.get()
-                GW[pos[0]][pos[1]] = vc['Sizing Results']['SizedGrossWeight'] if vc else float('nan')
-                #MCP[i][j] = v['Powerplant']['MCP']
-            print('')
+
+
+        sweepvars = ['Speed', 'Range']
+        # pick the spreads of the variables we're going to sweep
+        sweepspreads = np.zeros((len(sweepvars), numPerParam))
+        for i in range(len(sweepvars)):
+            sweepspreads[i] = np.linspace(sweeplimits[i][0], sweeplimits[i][1], numPerParam)
+        # initialize the full-factorial array
+        output = cartesian(sweepspreads)
+        outs = np.zeros((output.shape[0], 1))
+        output = np.hstack((output, outs))
+        # set up the plotting grids
+        SPEED, RANGE, = np.meshgrid(sweepspreads[0], sweepspreads[1])
+        GW = np.zeros(RANGE.shape)
+        #MCP = np.zeros(RANGE.shape)
+
+        num = output.shape[0]
+        tic = time()
+        if filename == 'Baseline':
+            GW = baseline[2]
         else:
-            data = np.load('Output/Data/%sContourData.npz' % filename)
-            GW = data['GW']
-    # filter data
-    # SPEED = scipy.ndimage.zoom(SPEED, 3)
-    # RANGE = scipy.ndimage.zoom(RANGE, 3)
-    # GW = scipy.ndimage.zoom(GW, 3)
-    #MRP = scipy.ndimage.zoom(MRP, 3)
-
-    GWN = baseline[3]
-
-    #MRPN = np.linspace(MRP.min(), MRP.max(), num=1000)
-    plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
-
-    plot = plt.subplot(1, 1, 1)
-    plot.tick_params(labelsize=axislabelfontsize)
-    if saveData: print 'Saving as Output/Data/%sContourData' % filename
-    if saveData: np.savez('Output/Data/%sContourData' % filename, SPEED=SPEED, RANGE=RANGE, GW=GW, GWN=GWN)
-    if smoothPlots:
-        GW[~np.isfinite(GW)] = 100000
-        SPEED = scipy.ndimage.zoom(SPEED, 2)
-        RANGE = scipy.ndimage.zoom(RANGE, 2)
-        GW = scipy.ndimage.zoom(GW, 2)
-
-
-    CS = plt.contourf(SPEED, RANGE, GW, GWN)
-    CSb = plt.contour(baseline[0], baseline[1], baseline[2], GWN, colors='k')
-    plt.clabel(CSb, inline=1, fontsize=contourfontsize, fmt='%1.f')
-
-    plt.xlabel('Ingress Speed (kts)', fontsize=labelfontsize)
-    plt.ylabel('Mission Range (nm)', fontsize=labelfontsize)
-    if showTitle: plt.title('Sized gross weight contours', fontsize=titlefontsize)
-    plt.grid(True)
-
-
-    if annotatePlots:
-        # measure improvement over baseline
-        m = ConfigObj(mconfig)
-        v = ConfigObj(vconfig)
-        m['Segment 2']['Distance'] = baselineRange
-        m['Segment 2']['Speed'] = baselineSpeed
-        v['Wing']['MaxSpeed'] = baselineSpeed
-        for k in xrange(len(section)):
-            v[section[k]][var[k]] = value[k]
-        vehicle = SizedVehicle(v, m, airfoildata_mainRotor, airfoildata_auxProp)
-        vehicle = vehicle.sizeMission()
-        if vehicle:
-            newGW = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
-            baselineGW = baseline[4]
-            percentage = (baselineGW - newGW) / baselineGW
-            if percentage<0:
-                s = '{:.1%} GW Increase'.format(-percentage)
-                labeltextcolor = badcolor
-                marker = badmarker
+            if generateNewData:
+                outstandingTasks = 0
+                # queue tasks
+                for i in xrange(GW.shape[0]):
+                    for j in xrange(GW.shape[1]):
+                        m = ConfigObj(mconfig)
+                        v = ConfigObj(vconfig)
+                        m['Segment 2']['Distance'] = (float) (RANGE[i][j])
+                        m['Segment 2']['Speed'] = (float) (SPEED[i][j])
+                        v['Wing']['MaxSpeed'] = (float) (SPEED[i][j])
+                        for k in xrange(len(section)):
+                            v[section[k]][var[k]] = value[k]
+                        tasks.put(Task(i, j, 0, v, m, airfoildata_mainRotor, airfoildata_auxProp))
+                        outstandingTasks += 1
+                # collect results back
+                for num in xrange(outstandingTasks):
+                    showProgress('%s - %s' % (sys._getframe().f_code.co_name, filename), tic, time(), num, outstandingTasks)
+                    (pos, vc) = results.get()
+                    GW[pos[0]][pos[1]] = vc['Sizing Results']['SizedGrossWeight'] if vc else float('nan')
+                    #MCP[i][j] = v['Powerplant']['MCP']
+                print('')
             else:
-                s = '{:.1%} GW Improvement'.format(percentage)
-                labeltextcolor = goodcolor
-                marker = goodmarker
-            if abs(percentage) > .001:
-                plt.plot([baselineSpeed], [baselineRange], marker, markersize=pointmarkersize)
-                plt.text(baselineSpeed+singleHoffset, baselineRange+singleVoffset, s, fontweight='bold', fontsize=labelfontsize, color=labeltextcolor, bbox={'facecolor':labelboxcolor, 'edgecolor':labelboxcolor, 'alpha':labelalpha, 'pad':labelpad})
+                data = np.load('Output/Data/%sContourData.npz' % filename)
+                GW = data['GW']
+        # filter data
+        # SPEED = scipy.ndimage.zoom(SPEED, 3)
+        # RANGE = scipy.ndimage.zoom(RANGE, 3)
+        # GW = scipy.ndimage.zoom(GW, 3)
+        #MRP = scipy.ndimage.zoom(MRP, 3)
 
-    divider = make_axes_locatable(plt.gca())
-    cax = divider.append_axes("right", "5%", pad="3%")
-    cb = plt.colorbar(CS, cax=cax)
-    cb.ax.tick_params(labelsize=axislabelfontsize)
+        GWN = baseline[3]
 
-    #plot = plt.subplot(1, 2, 2)
-    #plot.tick_params(labelsize=axislabelfontsize)
-    #SPEED = scipy.ndimage.zoom(SPEED, 3)
-    #RANGE = scipy.ndimage.zoom(RANGE, 3)
-    #MRP = scipy.ndimage.zoom(GW, 3)
-    #CS = plt.contourf(SPEED, RANGE, MRP, GWN)
-    ##plt.clabel(CS, inline=1, fontsize=10)
-    #plt.colorbar(CS)
-    #plt.xlabel('Ingress Speed (kts)', fontsize=labelfontsize)
-    #plt.ylabel('Ferry Range (nm)', fontsize=labelfontsize)
-    #plt.title('MRP contours', fontsize=titlefontsize)
-    #plt.grid(True)
+        #MRPN = np.linspace(MRP.min(), MRP.max(), num=1000)
+        
+        #plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
+
+        plot = plt.subplot(2, 2, which)
+        plot.tick_params(labelsize=axislabelfontsize)
+        if saveData: print 'Saving as Output/Data/%sContourData' % filename
+        if saveData: np.savez('Output/Data/%sContourData' % filename, SPEED=SPEED, RANGE=RANGE, GW=GW, GWN=GWN)
+        if smoothPlots:
+            GW[~np.isfinite(GW)] = 100000
+            SPEED = scipy.ndimage.zoom(SPEED, 2)
+            RANGE = scipy.ndimage.zoom(RANGE, 2)
+            GW = scipy.ndimage.zoom(GW, 2)
+
+
+        CS = plt.contourf(SPEED, RANGE, GW, GWN)
+        CSb = plt.contour(baseline[0], baseline[1], baseline[2], GWN, colors='k')
+        plt.clabel(CSb, inline=1, fontsize=contourfontsize, fmt='%1.f')
+
+        plt.xlabel('Ingress Speed (kts)', fontsize=labelfontsize)
+        plt.ylabel('Mission Range (nm)', fontsize=labelfontsize)
+        if showTitle: plt.title(title, fontsize=titlefontsize)
+        plt.grid(True)
+
+
+        if annotatePlots:
+            # measure improvement over baseline
+            m = ConfigObj(mconfig)
+            v = ConfigObj(vconfig)
+            m['Segment 2']['Distance'] = baselineRange
+            m['Segment 2']['Speed'] = baselineSpeed
+            v['Wing']['MaxSpeed'] = baselineSpeed
+            for k in xrange(len(section)):
+                v[section[k]][var[k]] = value[k]
+            vehicle = SizedVehicle(v, m, airfoildata_mainRotor, airfoildata_auxProp)
+            vehicle = vehicle.sizeMission()
+            if vehicle:
+                newGW = vehicle.vconfig['Sizing Results']['SizedGrossWeight']
+                baselineGW = baseline[4]
+                percentage = (baselineGW - newGW) / baselineGW
+                if percentage<0:
+                    s = '{:.1%} GW Increase'.format(-percentage)
+                    labeltextcolor = badcolor
+                    marker = badmarker
+                else:
+                    s = '{:.1%} GW Improvement'.format(percentage)
+                    labeltextcolor = goodcolor
+                    marker = goodmarker
+                if abs(percentage) > .001:
+                    plt.plot([baselineSpeed], [baselineRange], marker, markersize=pointmarkersize)
+                    plt.text(baselineSpeed+singleHoffset, baselineRange+singleVoffset, s, fontweight='bold', fontsize=labelfontsize, color=labeltextcolor, bbox={'facecolor':labelboxcolor, 'edgecolor':labelboxcolor, 'alpha':labelalpha, 'pad':labelpad})
+
+        divider = make_axes_locatable(plt.gca())
+        cax = divider.append_axes("right", "5%", pad="3%")
+        cb = plt.colorbar(CS, cax=cax)
+        cb.ax.tick_params(labelsize=axislabelfontsize)
+
+        #plot = plt.subplot(1, 2, 2)
+        #plot.tick_params(labelsize=axislabelfontsize)
+        #SPEED = scipy.ndimage.zoom(SPEED, 3)
+        #RANGE = scipy.ndimage.zoom(RANGE, 3)
+        #MRP = scipy.ndimage.zoom(GW, 3)
+        #CS = plt.contourf(SPEED, RANGE, MRP, GWN)
+        ##plt.clabel(CS, inline=1, fontsize=10)
+        #plt.colorbar(CS)
+        #plt.xlabel('Ingress Speed (kts)', fontsize=labelfontsize)
+        #plt.ylabel('Ferry Range (nm)', fontsize=labelfontsize)
+        #plt.title('MRP contours', fontsize=titlefontsize)
+        #plt.grid(True)
 
     plt.tight_layout()
     if saveFigures: plt.savefig('Output/Figures/%sContour.png' % filename, bbox_inches=0, dpi=figDPI)

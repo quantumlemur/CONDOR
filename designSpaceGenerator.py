@@ -7,12 +7,13 @@ import numpy as np
 import multiprocessing
 
 from rf import SizedVehicle
+from vehicle import Vehicle
 from configobj import ConfigObj
 from validate import Validator
 
 
-inputs = (('Aux Propulsion', 'NumAuxProps'), ('Wing', 'SpanRadiusRatio'), ('Main Rotor', 'DiskLoading'), ('Main Rotor', 'Solidity'), ('Main Rotor', 'TipSpeed'))
-inputRanges = ((0, 1), (0., 4.), (2., 30.), (.05, .15), (400., 800.))
+inputs = (('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'DiskLoading'), ('Main Rotor', 'Solidity'), ('Main Rotor', 'TipSpeed'))
+inputRanges = ((0, 1), (2., 30.), (.05, .15), (400., 800.))
 
 missionInputs = (('Segment 2', 'Distance'), ('Segment 2', 'Speed'))
 missionInputRanges = ((300., 1000.), (150., 300.))
@@ -66,11 +67,12 @@ class Worker(multiprocessing.Process):
             self.results.put(flatdict)
 
 class Task(object):
-    def __init__(self, vconfig, mconfig, airfoildata_mainRotor, airfoildata_auxProp):
+    def __init__(self, vconfig, mconfig, airfoildata_mainRotor, airfoildata_auxProp, gw=30000):
         self.vconfig = vconfig
         self.mconfig = mconfig
         self.airfoildata_mainRotor = airfoildata_mainRotor
         self.airfoildata_auxProp = airfoildata_auxProp
+        self.gw = gw
     def __call__(self):
         vconfig = ConfigObj(self.vconfig)
         mconfig = ConfigObj(self.mconfig)
@@ -86,13 +88,18 @@ class Task(object):
             else:
                 val = random.uniform(missionInputRanges[i][0], missionInputRanges[i][1])
             mconfig[missionInputs[i][0]][missionInputs[i][1]] = val
-        vehicle = SizedVehicle(vconfig, mconfig, self.airfoildata_mainRotor, self.airfoildata_auxProp)
-        sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object, or False if it wasn't able to converge properly.
+        #vehicle = SizedVehicle(vconfig, mconfig, self.airfoildata_mainRotor, self.airfoildata_auxProp)
+        #sizedVehicle = vehicle.sizeMission() # this is now a Vehicle object, or False if it wasn't able to converge properly.
+        sizedVehicle = Vehicle(vconfig, mconfig, self.gw, self.airfoildata_mainRotor, self.airfoildata_auxProp)
         if sizedVehicle:
             sizedVehicle.generatePowerCurve()
+            sizedVehicle.scaleEngine()
+            sizedVehicle.findCost()
             sizedVehicle.findHoverCeiling()
             sizedVehicle.findMaxRange()
             sizedVehicle.findMaxSpeed()
+            sizedVehicle.findMaxEndurance()
+            sizedVehicle.OEC()
             v = sizedVehicle.vconfig
             flatdict = {}
             def flatten(section, key):
@@ -100,7 +107,10 @@ class Task(object):
                     flatdict[key] = section[key]
             v.walk(flatten)
             flatdict['COMPUTERNAME'] = computerName
-            return flatdict
+            if flatdict['Payload']>0 and flatdict['MaxRange']>0:
+                return flatdict
+            else:
+                return None
         else:
             return None
 
@@ -204,7 +214,8 @@ if __name__ == '__main__':
                     # add tasks to the queue if we're running low
                     if outstandingTasks<numworkers and keepRunning:
                         for i in xrange(numworkers):
-                            tasks.put(Task(v, m, airfoildata_mainRotor, airfoildata_auxProp))
+                            gw = random.uniform(10000, 60000)
+                            tasks.put(Task(v, m, airfoildata_mainRotor, airfoildata_auxProp, gw))
                             outstandingTasks += 1
                     # update status output
                     updateStatus('running' if keepRunning else 'stopping', goodRows, totalRows, outstandingTasks=outstandingTasks)

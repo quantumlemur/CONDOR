@@ -1,3 +1,10 @@
+[OEC]
+BaselineRange = float()
+BaselineHoverCeiling = float()
+BaselineSpeed = float()
+BaselineCost = float()
+BaselinePayload = float()
+
 [Main Rotor]
 NumRotors = integer()
 DiskLoading = float()
