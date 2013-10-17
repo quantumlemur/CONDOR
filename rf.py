@@ -63,7 +63,7 @@ class SizedVehicle:
                 ms = 99999999999999 if math.isnan(choppah.misSize) else choppah.misSize
                 gA = goodAbove is not False
                 gAW = goodAbove.vconfig['Sizing Results']['GrossWeight'] if goodAbove else -999999999
-                pvar(locals(), ('steps', 'GWmax', 'GW', 'GWmin', 'couldTrim', 'couldMission', 'ms', 'viableCandidate', 'gA', 'gAW'))
+                pvar(locals(), ('steps', 'GWmax', 'GWmin', 'couldTrim', 'couldMission'))
         stopReason = ''
         goodRun = False
         if not (choppah.vconfig['Sizing Results']['CouldTrim'] and choppah.misSize>0):
@@ -98,7 +98,7 @@ if __name__ == '__main__':
     from configobj import ConfigObj
     from validate import Validator
     import numpy as np
-    v = ConfigObj('Config/vehicle_AHS.cfg', configspec='Config/vehicle.configspec')
+    v = ConfigObj('Config/vehicle_s92.cfg', configspec='Config/vehicle.configspec')
     m = ConfigObj('Config/AHS_mission3.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
     v.validate(vvdt)

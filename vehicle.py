@@ -176,7 +176,7 @@ class Vehicle:
 
     def altitudePowerCurve(self):
         v = self.vconfig
-        v['Condition']['Weight'] = self.GWhg
+        v['Condition']['Weight'] = self.GW
         speed = 100.
         powers = []
         altitudes = [0]
@@ -534,7 +534,7 @@ class Vehicle:
 
         Pparasite = TotalDrag*V/550
 
-        Pparasite = singlePropPower
+        # Pparasite = singlePropPower
 
         return (totalPower, Pinduced, Pprofile, Pparasite)
 
@@ -556,7 +556,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import matplotlib.pylab as pylab
     import numpy as np
-    v = ConfigObj('Config/vehicle_ah56.cfg', configspec='Config/vehicle.configspec')
+    v = ConfigObj('Config/vehicle_s92.cfg', configspec='Config/vehicle.configspec')
     m = ConfigObj('Config/AHS_mission3.cfg', configspec='Config/mission.configspec')
     vvdt = Validator()
     v.validate(vvdt)
