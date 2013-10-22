@@ -1,3 +1,21 @@
+# CONDOR
+# Copyright (C) 2013 Michael Roberts
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+
 import os
 import csv
 import sys
@@ -11,13 +29,13 @@ from vehicle import Vehicle
 from configobj import ConfigObj
 from validate import Validator
 
-
-inputs = (('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'DiskLoading'), ('Main Rotor', 'Solidity'), ('Main Rotor', 'TipSpeed'))
-inputRanges = ((0, 1), (2., 30.), (.05, .15), (400., 800.))
-
-missionInputs = (('Segment 2', 'Distance'), ('Segment 2', 'Speed'))
-missionInputRanges = ((300., 1000.), (150., 300.))
-
+# BEGIN SCRIPT CONFIG BLOCK
+vehicleConfigPath = 'Config/vehicle_s92.cfg'
+missionConfigPath = 'Config/mission_singlesegment.cfg'
+inputs = (('Aux Propulsion', 'NumAuxProps'), ('Main Rotor', 'DiskLoading'), ('Main Rotor', 'Solidity'), ('Main Rotor', 'TipSpeed'))  # Config blocks and items to vary
+inputRanges = ((0, 1), (2., 30.), (.05, .15), (400., 800.)) # Min and max for each config item, respectively
+missionInputs = (('Segment 2', 'Distance'), ('Segment 2', 'Speed'))  # Mission blocks and items to vary
+missionInputRanges = ((300., 1000.), (150., 300.))  # Min and max for each mission config item, respectively
 
 if os.getcwd().split(os.sep)[-1] == 'CONDOR':
     runFileFolder = 'Output/RunFiles/'
@@ -31,9 +49,9 @@ killFilePrefix = 'AAAA_FORCEKILL_'
 forceIdleFilePrefix = 'AAAA_FORCEIDLE_'
 inUseFilePrefix = 'AAAA_InUse_'
 
-
 idleSleepTime = 10
 minRunFileUpdateTime = 60 # minimum number of seconds between runfile updates
+# END CONFIG BLOCK
 
 lastRunFileUpdateTime = 0
 startTime = time.time() - 1 # subtract one second so we don't divide by zero on the first update
@@ -115,6 +133,7 @@ class Task(object):
             return None
 
 def showProgress(name, startTime, currentTime, endTime):
+    """Shows progress information in the terminal."""
     elapsedTime = currentTime - startTime
     remainingTime = endTime - currentTime
     totalTime = endTime - startTime
@@ -134,6 +153,7 @@ def fmtTime(total):
     return '%02d:%02d:%02d' % (hours, minutes, seconds)
 
 def updateStatus(state, goodRows=0, totalRows=0, outstandingTasks=1):
+    """Called when the status changes.  Prints it to the terminal and writes out a new runFile."""
     global runFile
     global startTime
     global lastRunFileUpdateTime
@@ -173,8 +193,8 @@ if __name__ == '__main__':
 
     while os.path.isfile(runFileFolder+idleFile) and not os.path.isfile(runFileFolder + killFile):
         if os.path.isfile(runFileFolder+activelyRunFile) and not os.path.isfile(runFileFolder+killFile)  and not os.path.isfile(runFileFolder+forceIdleFile):
-            v = ConfigObj('Config/vehicle_s92.cfg', configspec='Config/vehicle.configspec')
-            m = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
+            v = ConfigObj(vehicleConfigPath, configspec='Config/vehicle.configspec')
+            m = ConfigObj(missionConfigPath, configspec='Config/mission.configspec')
             vvdt = Validator()
             v.validate(vvdt)
             mvdt = Validator()
@@ -243,7 +263,3 @@ if __name__ == '__main__':
     # join/close the tasks queue
     tasks.join()
     updateStatus('quit')
-
-    # print 'Writing out the data!'
-    #     for i in xrange(len(output[keys[0]])):
-    #         writer.writerow([output[key][i] for key in keys])

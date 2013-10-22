@@ -1,38 +1,33 @@
+# CONDOR
+# Copyright (C) 2013 Michael Roberts
 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
 
-# These are just a few notes that came out of a meeting, in which we touched on rotor design.  I'm keeping them here for future reference,
-# but they apply more to my own rotor project than to the code as a whole.  Or maybe for some default blade/rotor or something.
-
-
-#NASA Report on Advanced Tech, page 37
-#-9 degrees twist
-#
-#VR-12 from 0 to .85,
-#linear transition from .85 to .95
-#VR-15 from .95 to tip
-#no tip sweep
-#
-#Leo Dedone's patent for airfoild
-
-# target 60-80 lb/sq ft wing loading, no more than 100
-# nominal wing incidence at 3deg
-# can use propeller efficiency plot from p.55 om NASA report
-# if you find BEM equations for propellers that include J as the advance ratio, be careful because it has some different definition
-
-
-
-
-
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 
 import math
 import time
 import numpy as np
 
+# BEGIN SCRIPT CONFIGURATION BLOCK
 debug = False
 animate = False
 plot = False
+vehicleConfigPath = 'Config/vehicle_s92.cfg'
+missionConfigPath = 'Config/AHS_mission3.cfg'
+# END SCRIPT CONFIGURATION BLOCK
+
 
 def pvar(locals_, vars_):
     s = ['%s: %.3f' % (var, locals_[var]) for var in vars_]
@@ -587,8 +582,8 @@ if __name__ == '__main__':
                         for balance in [.5, 1.]:
                             s = 'GW: %d     V: %d     horizM: %d     vertM: %d     balance: %f' % (GW, V, horizM, vertM, balance)
                             print s
-                            v = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
-                            m = ConfigObj('Config/mission.cfg', configspec='Config/mission.configspec')
+                            v = ConfigObj(vehicleConfigPath, configspec='Config/vehicle.configspec')
+                            m = ConfigObj(missionConfigPath, configspec='Config/mission.configspec')
                             vvdt = Validator()
                             v.validate(vvdt)
                             mvdt = Validator()
@@ -631,8 +626,8 @@ if __name__ == '__main__':
         balance = .7
         s = 'GW: %d     V: %d     horizM: %d     vertM: %d     balance: %f' % (GW, V, horizM, vertM, balance)
         print s
-        v = ConfigObj('Config/vehicle_AHS.cfg', configspec='Config/vehicle.configspec')
-        m = ConfigObj('Config/mission.cfg', configspec='Config/mission.configspec')
+        v = ConfigObj(vehicleConfigPath, configspec='Config/vehicle.configspec')
+        m = ConfigObj(missionConfigPath, configspec='Config/mission.configspec')
         vvdt = Validator()
         v.validate(vvdt)
         mvdt = Validator()

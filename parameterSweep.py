@@ -1,3 +1,22 @@
+# CONDOR
+# Copyright (C) 2013 Michael Roberts
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+
+
 import matplotlib
 matplotlib.use('Agg')
 
@@ -19,11 +38,12 @@ from configobj import ConfigObj
 from validate import Validator
 
 
-debug = False
-
 def pvar(locals_, vars_):
     s = ['%s: %d' % (var, locals_[var]) for var in vars_]
     print '     '.join(s)
+
+# BEGIN SCRIPT CONFIG BLOCK
+debug = False
 
 
 DiskLoadingrange = [4, 15]
@@ -31,12 +51,12 @@ Solidityrange = [0.05, 0.15]
 TipSpeedrange = [400, 800]
 GWrange = [15000, 45000]
 
-
 numPerParam = 20
 sweeplimits = [[100, 250], [300, 1000]] # speed, range
 baselineRange = 553.
 baselineSpeed = 153.
 
+# plot visualization settings
 singlefigW = 3.4
 singlefigH = 2.5
 doublefigW = 6.5
@@ -67,6 +87,7 @@ GWtickhighpadding = 4000
 MRPtickspacing = 250
 tickresolution = 1000
 
+# plot display settings
 splitFourPlots = True
 displayPlots = False
 saveData = False
@@ -75,6 +96,7 @@ annotatePlots = True
 showTitle = True
 smoothPlots = False
 
+# script behavior settings plot selection
 generateNewBaseline = False
 generateNewData = False
 
@@ -89,9 +111,14 @@ plotAllImprovements = True
 plotSweepContours = [] # ['Solidity', 'DiskLoading', 'TipSpeed', 'SpanRadiusRatio']
 plotExtraContours = False
 
+# configs
+vehicleConfigPath = 'Config/vehicle_s92.cfg'
+missionConfigPath = 'Config/mission_singlesegment.cfg'
+# END SCRIPT CONFIG BLOCK
 
-vconfig = ConfigObj('Config/vehicle_s92.cfg', configspec='Config/vehicle.configspec')
-mconfig = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
+
+vconfig = ConfigObj(vehicleConfigPath, configspec='Config/vehicle.configspec')
+mconfig = ConfigObj(missionConfigPath, configspec='Config/mission.configspec')
 vvdt = Validator()
 vconfig.validate(vvdt)
 mvdt = Validator()
@@ -322,7 +349,7 @@ def RangeSpeedContour(baseline, filename='Baseline', section=['Main Rotor'], var
         GWN = baseline[3]
 
         #MRPN = np.linspace(MRP.min(), MRP.max(), num=1000)
-        
+
         #plt.figure(num=None, figsize=(singlefigW, singlefigH), dpi=figDPI, facecolor='w', edgecolor='k')
 
         plot = plt.subplot(2, 2, which)

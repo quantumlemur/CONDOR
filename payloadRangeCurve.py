@@ -1,3 +1,22 @@
+# CONDOR
+# Copyright (C) 2013 Michael Roberts
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+
+
 import sys
 import time
 import signal
@@ -10,17 +29,25 @@ from vehicle import Vehicle
 from configobj import ConfigObj
 from validate import Validator
 
+# BEGIN SCRIPT CONFIG BLOCK
+numPerAxis = 20
+vehicleConfigPath = 'Config/vehicle_s92.cfg'
+missionConfigPath = 'Config/AHS_mission%d.cfg'
+rangeMin = 0
+rangeMax = 1000
+payloadMin = 0
+payloadMax = 12000
+# END SCRIPT CONFIG BLOCK
+
+
+
 mission = 1
 halted = False
 tasks = multiprocessing.JoinableQueue()
 queuedtasks = []
 results = multiprocessing.Queue()
-
-
-numPerAxis = 20
-ranges = np.linspace(0, 1000, numPerAxis)
-payloads = np.linspace(0, 12000, numPerAxis)
-
+ranges = np.linspace(rangeMin, rangeMax, numPerAxis)
+payloads = np.linspace(payloadMin, payloadMax, numPerAxis)
 startTime = time.time() - 1 # subtract one second so we don't divide by zero on the first update
 
 def signal_handler(signal, frame):
@@ -97,8 +124,8 @@ def fmtTime(total):
 if __name__ == '__main__':
 
 
-    v = ConfigObj('Config/vehicle_AHS.cfg', configspec='Config/vehicle.configspec')
-    m = ConfigObj('Config/AHS_mission%d.cfg' % mission, configspec='Config/mission.configspec')
+    v = ConfigObj(vehicleConfigPath, configspec='Config/vehicle.configspec')
+    m = ConfigObj(missionConfigPath % mission, configspec='Config/mission.configspec')
     vvdt = Validator()
     v.validate(vvdt)
     mvdt = Validator()

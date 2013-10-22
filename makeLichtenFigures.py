@@ -1,3 +1,21 @@
+# CONDOR
+# Copyright (C) 2013 Michael Roberts
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+
 import math
 import numpy as np
 import scipy.ndimage
@@ -9,6 +27,9 @@ from validate import Validator
 import random
 from scipy.interpolate import interp1d
 
+
+# BEGIN SCRIPT CONFIG BLOCK
+# plot display parameters
 singlefigW = 3.4
 singlefigH = 2.5 # * 2
 doublefigW = 7
@@ -40,28 +61,29 @@ GWtickhighpadding = 4000
 MRPtickspacing = 250
 tickresolution = 1000
 
-
-
-
+# script behavior
 displayPlots = False
 saveData = False
 saveFigures = True
 annotatePlots = True
 
+# plot selection
 plotScalingPlots = False
 plotRfPlot = False
 plotPerformanceCurve = False
 plotcross_config_plots = True
 
+# config files
+vehicleConfigPath = 'Config/vehicle.cfg'
+missionConfigPath = 'Config/mission_singlesegment.cfg'
+# END SCRIPT CONFIG BLOCK
 
 
 
 
 
-
-
-vconfig = ConfigObj('Config/vehicle.cfg', configspec='Config/vehicle.configspec')
-mconfig = ConfigObj('Config/mission_singlesegment.cfg', configspec='Config/mission.configspec')
+vconfig = ConfigObj(vehicleConfigPath, configspec='Config/vehicle.configspec')
+mconfig = ConfigObj(missionConfigPath, configspec='Config/mission.configspec')
 vvdt = Validator()
 vconfig.validate(vvdt)
 mvdt = Validator()
@@ -73,9 +95,9 @@ airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the
 def cross_config_plots():
 
     cost = np.array([0.5, 1, 1.5, 2, 3, 3.5, 4])
-    
 
-    data = [[[5, 7, 7.4, 7.6, 8.2, 8.5], [1, 1.6, 2.2, 2.9, 4], [2.5, 2.8, 3.1, 3.3, 3.4], [1, 4, 4.7, 4.84, 5.03]], 
+
+    data = [[[5, 7, 7.4, 7.6, 8.2, 8.5], [1, 1.6, 2.2, 2.9, 4], [2.5, 2.8, 3.1, 3.3, 3.4], [1, 4, 4.7, 4.84, 5.03]],
         [[2.5, 6, 7.8, 8.3, 9, 9.6], [0.5, 1.2, 2, 2.7, 4], [1.5, 2.6, 3, 3.1, 3.2], [0.2, 3, 4, 4.3, 4.5]],
         [[4.2, 6.5, 8, 8.5, 9, 9.5, 9.9], [0.5, 1.3, 2.2, 3.2, 4.4, 4.5, 4.6], [2.5, 3, 3.3, 3.55, 4], [0.1, 3, 4.1, 4.2]],
         [[4, 6.5, 8, 8.8, 10, 10.5, 10.8], [0.7, 1.5, 2.5, 3.5, 4.5, 4.7], [3, 3.8, 4.2, 4.4, 4.5, 4.5], [0, 3, 4, 4.2, 4.25]],
