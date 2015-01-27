@@ -15,7 +15,7 @@
 			"file": "BEMT.py",
 			"settings":
 			{
-				"buffer_size": 24990,
+				"buffer_size": 26430,
 				"line_ending": "Windows"
 			}
 		},
@@ -40,7 +40,7 @@
 			"settings":
 			{
 				"buffer_size": 4527,
-				"line_ending": "Windows"
+				"line_ending": "Unix"
 			}
 		},
 		{
@@ -55,8 +55,8 @@
 			"file": "vehicle.py",
 			"settings":
 			{
-				"buffer_size": 38637,
-				"line_ending": "Windows"
+				"buffer_size": 39401,
+				"line_ending": "Unix"
 			}
 		},
 		{
@@ -107,8 +107,14 @@
 		"side_bar_visible": false,
 		"status_bar_visible": false
 	},
+	"expanded_folders":
+	[
+		"/C/Users/bengland3/Documents/GitHub/CONDOR/CONDOR_v1.4"
+	],
 	"file_history":
 	[
+		"/C/Users/bengland3/Documents/GitHub/CONDOR/CONDOR_v1.4/Config/Vehicles/vehicle_MD_530FF.cfg",
+		"/C/Users/bengland3/Documents/GitHub/CONDOR/CONDOR_v1.4/Config/Configspec/vehicle.configspec",
 		"/C/Users/Benjamin/Documents/GitHub/LogisticsSimulation_AHS2015/Order.py",
 		"/C/Users/Benjamin/Documents/GitHub/git-tutorial/tutorial.py",
 		"/C/Users/Benjamin/Dropbox/AHS Competition/Codes/Order.py",
@@ -122,7 +128,7 @@
 	],
 	"find":
 	{
-		"height": 43.0
+		"height": 28.0
 	},
 	"find_in_files":
 	{
@@ -155,7 +161,7 @@
 	"groups":
 	[
 		{
-			"selected": 5,
+			"selected": 6,
 			"sheets":
 			[
 				{
@@ -164,7 +170,7 @@
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 24990,
+						"buffer_size": 26430,
 						"regions":
 						{
 						},
@@ -314,15 +320,15 @@
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 38637,
+						"buffer_size": 39401,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								3555,
-								3555
+								0,
+								0
 							]
 						],
 						"settings":
@@ -332,10 +338,10 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 1391.0,
+						"translation.y": 0.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 0,
+					"stack_index": 1,
 					"type": "text"
 				},
 				{
@@ -351,8 +357,8 @@
 						"selection":
 						[
 							[
-								89,
-								89
+								0,
+								0
 							]
 						],
 						"settings":
@@ -362,10 +368,10 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 147.0,
+						"translation.y": 0.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 1,
+					"stack_index": 0,
 					"type": "text"
 				}
 			]
@@ -373,7 +379,7 @@
 	],
 	"incremental_find":
 	{
-		"height": 32.0
+		"height": 28.0
 	},
 	"input":
 	{
@@ -413,7 +419,7 @@
 	"project": "Condor_V1.4.sublime-project",
 	"replace":
 	{
-		"height": 60.0
+		"height": 52.0
 	},
 	"save_all_on_build": true,
 	"select_file":
@@ -451,7 +457,7 @@
 	"show_minimap": true,
 	"show_open_files": true,
 	"show_tabs": true,
-	"side_bar_visible": false,
+	"side_bar_visible": true,
 	"side_bar_width": 188.0,
 	"status_bar_visible": true,
 	"template_settings":
