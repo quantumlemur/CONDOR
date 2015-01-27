@@ -62,7 +62,7 @@ class Vehicle:
       v['Sizing Results']['Nothing'] = 0.
       v['Performance']['Nothing'] = 0.
       
-      self.blade = Blade(airfoildata=self.airfoildata_mainRotor, Master = self.Master,skip_header=0, skip_footer=0, averageChord=v['Main Rotor']['AverageChord']/v['Main Rotor']['Radius'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
+      self.blade = Blade(airfoildata=self.airfoildata_mainRotor, Master = self.Master,skip_header=0, skip_footer=0, averageChord=v['Main Rotor']['AverageChord']/v['Main Rotor']['Radius'], taperPosition=v['Main Rotor']['TaperPosition'], taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], rootCutout=v['Main Rotor']['RootCutout'], segments=v['Simulation']['numBladeElementSegments'], dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
       self.rotor = Rotor(self.blade, psiSegments=v['Simulation']['numBladeElementSegments'], Vtip=v['Main Rotor']['TipSpeed'], radius=v['Main Rotor']['Radius'], numblades=v['Main Rotor']['NumBlades'],Master = self.Master)
       self.sizeAntiTorque()      
       if self.Master['Code Selection']['rf_Run']: # When using RF method scales engine
@@ -118,11 +118,22 @@ class Vehicle:
           print MRP
       scaledStructureWeight = improvedStructureWeightFraction * self.GW
       
+      #NEW PART - BLADE WEIGHT
+      try:
+          if self.GW/v['Main Rotor']['DiskLoading'] < 4680:
+              scaledRotorWeight = (7.07*(self.GW)**1.205)/(v['Main Rotor']['TipSpeed']*v['Main Rotor']['DiskLoading']**0.205)
+          else:
+              scaledRotorWeight = (3.16*(self.GW)**1.30)/(v['Main Rotor']['TipSpeed']*v['Main Rotor']['DiskLoading']**0.3)
+      except:
+          scaledRotorWeight = 999999999.
+          print scaledRotorWeight
+      
+  
       if self.Master['Code Selection']['rf_Run']:
         v['Weights']['scaledEngineWeight'] = scaledEngineWeight * (1-v['Weights']['EngineWeightTechImprovementFactor'])
         v['Weights']['scaledDriveSystemWeight'] = scaledDriveSystemWeight * (1-v['Weights']['DriveSystemWeightTechImprovementFactor'])
         v['Weights']['scaledStructureWeight'] = scaledStructureWeight * (1-v['Weights']['StructureWeightTechImprovementFactor'])
-        
+        v['Weights']['scaledRotorWeight'] = scaledRotorWeight * (1-v['Weights']['DriveSystemWeightTechImprovementFactor'])  # Same Technical Improvement Factor with Drive System      
         v['Weights']['EmptyWeightFraction'] = (scaledEngineWeight + scaledDriveSystemWeight + scaledStructureWeight) / self.GW - 0.11
         v['Weights']['EmptyWeight'] = v['Weights']['EmptyWeightFraction'] * self.GW
         v['Weights']['MaxAvailableFuelWeight'] = self.GW - v['Weights']['EmptyWeight'] - v['Weights']['UsefulLoad']
@@ -130,7 +141,8 @@ class Vehicle:
         v['Weights']['scaledEngineWeight'] = scaledEngineWeight
         v['Weights']['scaledDriveSystemWeight'] = scaledDriveSystemWeight
         v['Weights']['scaledStructureWeight'] = scaledStructureWeight
-        
+        v['Weights']['scaledRotorWeight'] = scaledRotorWeight     #Newly Inserted
+ 
         # output
         v['Weights']['EmptyWeightFraction'] = w['baselineEmptyWeightFraction']
         v['Weights']['EmptyWeight'] = baselineEmptyWeight
@@ -666,9 +678,9 @@ class Vehicle:
     """This code sizes the antitorque rotor for input knots"""
     v = self.vconfig
     if v['Main Rotor']['NumRotors'] > 1:
-          advancingLiftBalance = .9
+        advancingLiftBalance = .9
     else:
-      advancingLiftBalance = .6
+        advancingLiftBalance = .6
     self.rotor.Vtip = v['Main Rotor']['TipSpeed']
     self.rotor.omega = self.rotor.Vtip / v['Main Rotor']['Radius']############################################# 
     

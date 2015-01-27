@@ -23,7 +23,7 @@ class Blade:
     # non-dimensional blade, with everything referenced to a radius of 1.
 
     def __init__(self, airfoildata, averageChord, Master, skip_header=0, skip_footer=0,\
-                 taperRatio=1, tipTwist=0, rootCutout=.1, segments=15, \
+                 taperRatio=1, taperPosition=1, tipTwist=0, rootCutout=.1, segments=15, \
                  dragDivergenceMachNumber=.85):
         self.dragDivergenceMachNumber = dragDivergenceMachNumber
         self.rootCutout = rootCutout
@@ -43,8 +43,13 @@ class Blade:
         twist75 = np.interp(.75, [rootCutout,1], [0,tipTwist*math.pi/180.])
         self.twist -= twist75
         self.theta_tw = tipTwist * math.pi/180.
-        rootChord = 2 * averageChord / (taperRatio + 1)
-        self.chord = np.interp(self.r, [rootCutout,1], [rootChord,rootChord*taperRatio])
+        #rootChord = 2 * averageChord / (taperRatio + 1)
+        self.chord = np.zeros(endpoints.size - 1)
+        for i in range(self.r.size):
+            if self.r[i] <= taperPosition :
+                self.chord[i] = np.interp(self.r[i], [rootCutout,taperPosition], [averageChord,averageChord])
+            else :
+                self.chord[i] = np.interp(self.r[i]-taperPosition, [0.,(1.-taperPosition)], [averageChord,averageChord*taperRatio])
         self.debug = Master['BEMT Options']['BEMT_debug']
         self.plot = Master['BEMT Options']['BEMT_plot']
         self.animate =Master['BEMT Options']['BEMT_animate']
@@ -135,6 +140,8 @@ class Rotor:
     def reinitializeTrimVars(self):
         # We'll just use .1 rad = 5.73 deg to initialize for now.  It'd be better to use closed-form estimates, but we'll add that later.
         self.beta_0 = .1 # precone
+        self.beta_1c = 0.
+        self.beta_1s = 0.
         self.theta_0 = .2
         self.theta_1c = 0.
         self.theta_1s = 0.
@@ -165,36 +172,38 @@ class Rotor:
             #F[~np.isfinite(F)] = 0.001
 #            newinflow = thrust / (2.*rho*diskArea*np.sqrt((V*math.cos(alpha_TPP))**2 + (V*math.sin(alpha_TPP) + F*inflow)**2))
 #            # The next lines are a proposed alteration to include climb speed
-#           
+#
             newinflow = thrust / (2.*rho*diskArea*np.sqrt((V*math.cos(alpha_TPP) + Vcl*math.sin(alpha_TPP))**2 \
                         + (V*math.sin(alpha_TPP) + F*inflow + Vcl* math.cos(alpha_TPP))**2))
-            
+
             change = abs(np.sum(newinflow) - np.sum(inflow)) / np.sum(inflow)
             inflow = newinflow
             inflow_avg = inflow.sum() / inflow.size
             #print inflow[-1][-1]
             steps += 1
 
-            
+
         #uniform = (inflow * self.r) / self.r
         self.F = F
         if alpha_TPP < math.pi/4.:
-#          mu_x = V*math.cos(alpha_TPP)/(self.omega*self.R)
-          mu_x = (V*math.cos(alpha_TPP)+Vcl*math.sin(alpha_TPP))/(self.omega*self.R) # Potential Change for climbing flight
-#          mu_z = V*math.sin(alpha_TPP)/(self.omega*self.R)
-          k_x = (4/3)*mu_x/inflow/(1.2+mu_x/inflow) # Payne model (Leishman 160)
-          k_y = 0 # Payne model (Lesihman 160)
-          
-#          k_x = mu_x/(2.*(mu_z+inflow)) # Coleman model (Leishman 160)
-#          k_y = 0. # Coleman model (Leishman 160)
-#          Xi = np.arctan(mu_x/(mu_z+inflow))
-#          k_x = (4/3)*(1. - np.cos(Xi) - 1.8*mu_x**2)/np.sin(Xi) # Drees Model (Leishman 160) [DOESN'T WORK: CODE FAILS]
-#          k_y = -2. * mu_x # Drees Model (Leishman 160) [DOESN'T WORK: CODE FAILS]
-          
-# Glauert non-uniform inflow correction          
-          inflow = inflow * (1. + k_x*self.r*self.cospsi + k_y*self.r*self.sinpsi)
-          
-          
+#           mu_x = V*math.cos(alpha_TPP)/(self.omega*self.R)
+            mu_x = (V*math.cos(alpha_TPP)+Vcl*math.sin(alpha_TPP))/(self.omega*self.R) # Potential Change for climbing flight
+            mu_z = V*math.sin(alpha_TPP)/(self.omega*self.R)
+
+            k_x = (4/3)*mu_x/inflow/(1.2+mu_x/inflow) # Payne model (Leishman 160)
+            k_y = 0 # Payne model (Lesihman 160)
+
+#           k_x = mu_x/(2.*(mu_z+inflow)) # Coleman model (Leishman 160)
+#           k_y = 0. # Coleman model (Leishman 160)
+
+#           Xi = np.arctan(mu_x/inflow)
+#           k_x = (4/3)*(1.- 1.8*mu_x**2)/np.tan(Xi/2.) # Drees Model (Leishman 160) [DOESN'T WORK: CODE FAILS]
+#           k_y = -2. * mu_x # Drees Model (Leishman 160) [DOESN'T WORK: CODE FAILS]
+
+# Glauert non-uniform inflow correction
+            inflow = inflow * (1. + k_x*self.r*self.cospsi + k_y*self.r*self.sinpsi)
+
+
 #          print np.sum(inflow)/ np.size(inflow)
         # import matplotlib.pyplot as plt
         # fig = plt.figure()
@@ -217,7 +226,7 @@ class Rotor:
         # plt.show()
 #        print "Inflow=", inflow
         return inflow
-        
+
 
     def trimTandem(self, tolerancePct, V, speedOfSound, rho, Fx, Fz, maxSteps):
         liftBalanceMin = .4
@@ -242,8 +251,8 @@ class Rotor:
         dr = self.dr
         dpsi = self.dpsi
         numblades = self.numblades
-        cospsi = self.cospsi
-        sinpsi = self.sinpsi
+        cospsi = np.cos(psi)
+        sinpsi = np.sin(psi)
         Vtip = self.Vtip
         blade = self.blade
         rootCutout = blade.rootCutout * R
@@ -261,6 +270,8 @@ class Rotor:
 
         #F = self.F
         beta_0 = self.beta_0
+        beta_1c = self.beta_1c
+        beta_1s = self.beta_1s
         theta_0 = self.theta_0
         theta_1c = self.theta_1c
         theta_1s = self.theta_1s
@@ -333,27 +344,33 @@ class Rotor:
         while np.isfinite(P) and steps<maxSteps and abs(theta_0)<math.pi/2 and not (abs(liftDeficitPct)<tol and abs(lastP-P)/P<tol and abs(rearLiftProportion-.5)/.5<tol and abs(advancingLiftProportion-advancingLiftBalance)/advancingLiftBalance<tol*300) and abs(P)<40000:
             steps += 1
             # find the effective blade section angle of attack
-            beta = beta_0
-            U_T = omega*r + V*sinpsi*np.cos(alpha_TPP) # local tangential velocity.
-            U_P = inflow + V*np.sin(alpha_TPP) # local perpendicular velocity.
+            beta = beta_0 + beta_1c*cospsi + beta_1s*sinpsi
+            dbeta = -omega*beta_1c*sinpsi + omega*beta_1s*cospsi
+            U_T = omega*r + V*sinpsi*np.cos(alpha_TPP-beta_1c) # local tangential velocity.
+            U_P = inflow + r*dbeta + V*cospsi*beta*np.cos(alpha_TPP-beta_1c) # local perpendicular velocity.
+            #U_P = inflow + V*np.cos(alpha_TPP)*beta # local perpendicular velocity.
             theta = theta_0 + blade.twist + theta_1c*cospsi - theta_1s*sinpsi
             phi = np.arctan2(U_P, U_T)
             alphaEffective = theta - phi
+            #alphaEffective = 1/U_T*(omega*r*(theta_0+blade.twist+(theta_1c-beta_1s)*cospsi+(-theta_1s+beta_1c)*sinpsi) + \
+            #                 V*(theta_0+blade.twist)*sinpsi+V*(theta_1c-beta_1s)*cospsi*sinpsi + \
+            #                 V*(-theta_1s+beta_1c)*sinpsi**2-V*beta_0*cospsi - V*alpha_TPP - inflow)
+            #print alphaEffective*180/math.pi
             # funny modulo
             while np.any(alphaEffective > math.pi):
                 alphaEffective[alphaEffective>math.pi] -= 2*math.pi
             while np.any(alphaEffective < -math.pi):
                 alphaEffective[alphaEffective<-math.pi] += 2*math.pi
-            # get the cl and cd data for blade sections.  Since we're using lookup tables, this is a quasi-steady solution.  
-            # We may want to add in corrections for unstead aerodynamic effects and dynamic stall in the future.  
+            # get the cl and cd data for blade sections.  Since we're using lookup tables, this is a quasi-steady solution.
+            # We may want to add in corrections for unstead aerodynamic effects and dynamic stall in the future.
             # Dynamic stall is also important to find the vibration levels of the vehicle in high speed forward flight.
             cl = self.blade.cl(alphaEffective)
             cd = self.blade.cd(alphaEffective)
             # apply Prandtl-Glauert compressibility correction
-            U_total = np.sqrt(U_T**2 + U_P**2) # Although we do not, we can assume U_T>>U_P, which is only untrue if U_T is small (i.e. on the retreating side in high-speed flight), in which case mach numbers will be small anyway, so should be ok.
+            U_total = U_T #np.sqrt(U_T**2 + U_P**2) # Although we do not, we can assume U_T>>U_P, which is only untrue if U_T is small (i.e. on the retreating side in high-speed flight), in which case mach numbers will be small anyway, so should be ok.
             mach = U_total / speedOfSound
-            cd[mach>blade.dragDivergenceMachNumber] = (mach[mach>blade.dragDivergenceMachNumber]-blade.dragDivergenceMachNumber)*.6 + cd[mach>blade.dragDivergenceMachNumber] # drag divergence
             mach[mach>=1] = .999999
+            cd[mach>blade.dragDivergenceMachNumber] = (mach[mach>blade.dragDivergenceMachNumber]-blade.dragDivergenceMachNumber)*.6 + cd[mach>blade.dragDivergenceMachNumber] # drag divergence
             cl = cl / np.sqrt(1-mach**2)
             #cl[~np.isfinite(cl)] = 0. # if local mach>1, set cl=0.  This correction doesn't apply in those ranges, but this is probably acceptable and will allow trim solutions even with local M>1.  In combination with drag divergence, it should be an OK approximation.
             # Find the rotor sectional (1D) lift and drag
@@ -387,8 +404,8 @@ class Rotor:
             averageInflow = inflow.sum() / inflow.size
 
             # Calculate trim angles
-            beta_0 = lockNumber / (2.*math.pi) * T / (.5*rho*math.pi*R**2*Vtip**2) # should replace this with a real calculation involving blade mass, but it's good enough for now
-            # balance the rotor
+            #beta_0 = lockNumber / (2.*math.pi) * T / (.5*rho*math.pi*R**2*Vtip**2) # should replace this with a real calculation involving blade mass, but it's good enough for now
+            #balance the rotor
             advancingLiftProportion = np.sum(np.ma.array(dT, mask=sinpsi<0)*dr*r*dpsi) / T # dT[sinpsi>0]) / T  # proportion of lift contributed by the advancing side
             rearLiftProportion = np.sum(np.ma.array(dT, mask=cospsi<0)*dr*r*dpsi) / T # dT[cospsi>0]) / T  # proportion of lift contributed by the rear side
             pitch = (.5 - rearLiftProportion) / 100
@@ -426,7 +443,11 @@ class Rotor:
                 TChanges.pop(0)
             theta_0 += dtheta_0
 
-
+            mu = V/(omega*R)
+            lamda = averageInflow/(omega*R)
+            beta_0 = lockNumber*(theta_0/8*(1+mu**2) + blade.theta_tw/10*(1+5/6*mu**2)- lamda/6) # mu/6*theta_1s
+            beta_1s =(-4/3*mu*beta_0)/(1+1/2*mu**2) #+ theta_1c
+            beta_1c = -8/3*mu*(theta_0-3/4*lamda+3/4*blade.theta_tw)/(1-1/2*mu**2) #+ theta_1s
             if self.animate:
                 for i in xrange(9):
                     axes[i].cla()
@@ -451,13 +472,15 @@ class Rotor:
                 miscB_hist.append(advancingLiftProportion)
                 coll = theta_0 * 180/math.pi
                 b0 = beta_0 * 180/math.pi
+                b1s = beta_1s * 180/math.pi
+                b1c = beta_1c * 180/math.pi
                 t1s = theta_1s * 180/math.pi
                 t1c = theta_1c * 180/math.pi
                 total = math.sqrt(Fx**2 + Fz**2)
                 dthet = dtheta_0 #* 1000
                 roll = roll
                 pitch = pitch
-                pvar(locals(), ('steps', 'total', 'T', 'dthet', 'coll', 'b0', 't1c', 't1s', 'Pinduced', 'Pprofile', 'P', 'averageInflow'))
+                pvar(locals(), ('steps', 'total', 'T', 'dthet', 'coll', 'b0', 'b1c', 'b1s', 't1c', 't1s', 'Pinduced', 'Pprofile', 'P', 'averageInflow'))
             if steps == False:  # suicide switch
                 time.sleep(100)
                 P = float('nan')
@@ -472,6 +495,8 @@ class Rotor:
         self.theta_1c = theta_1c
         self.theta_1s = theta_1s
         self.beta_0 = beta_0
+        self.beta_1c = beta_1c
+        self.beta_1s = beta_1s
         self.theta_0_hist = theta_0_hist
         self.b0_hist = b0_hist
         self.t1c_hist = t1c_hist
@@ -481,12 +506,11 @@ class Rotor:
         self.pitch_hist = pitch_hist
         self.miscA_hist = miscA_hist
         self.miscB_hist = miscB_hist
-        
+
         if abs(liftDeficitPct)<tol and abs(lastP-P)/lastP<tol and abs(theta_0)<math.pi/6.0 and abs(P)<40000 and (abs(rearLiftProportion-.5)/.5<tol and abs(advancingLiftProportion-advancingLiftBalance)/advancingLiftBalance<tol*300):
           P_total = Pinduced + Pprofile
         elif abs(liftDeficitPct)>tol: # Failure to make enough lift
           P_total = -1
-#          print theta_0*180./math.pi
           Pinduced = float('nan')
           Pprofile = float('nan')
         elif abs(lastP-P)/lastP>tol: # Failure to converge power
@@ -537,7 +561,7 @@ class Rotor:
         self.power = P_total
 #        print "Advancing Lift B % = ", abs(advancingLiftProportion-advancingLiftBalance)/advancingLiftBalance
 #        print "Collective = ", abs(theta_0)*180/math.pi
-        TrimData = [averageInflow, theta_0*180/math.pi, beta_0*180/math.pi, theta_1c*180/math.pi, theta_1s*180/math.pi]
+        TrimData = [averageInflow, theta_0*180/math.pi, beta_0*180/math.pi, beta_1c*180/math.pi, beta_1s*180/math.pi, theta_1c*180/math.pi, theta_1s*180/math.pi]
         if returnAll:
             return (P_total, Pinduced, Pprofile, TrimData)
         else:
