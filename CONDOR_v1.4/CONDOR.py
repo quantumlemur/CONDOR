@@ -1,9 +1,9 @@
 # CONDOR
 # Integrated Product Lifecylce Engineering Labratory
 
-"""This the run file. All parameters for running are set in the input file. 
+"""This the run file. All parameters for running are set in the input file.
 Set the associated variabels to either True or False in order to run that script. All
-setup and running can be done from the associated Master_Input file without the 
+setup and running can be done from the associated Master_Input file without the
 need to go any further into the other codes."""
 
 """ Running of selected Files"""

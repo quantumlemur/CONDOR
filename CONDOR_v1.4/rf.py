@@ -19,8 +19,8 @@ class SizedVehicle:
         self.airfoildata_mainRotor = airfoildata_mainRotor
         self.debug = Master['RF Options']['RF_debug']
         self.writeOutput = Master['RF Options']['RF_writeOutput']
-        self.Master = Master        
-        
+        self.Master = Master
+
     def sizeMission(self):
         """This is the new sizing routine.  It uses bracketing to narrow the tolerances
         of the GW solution until it is found to be within the specified accuracy.  Should
