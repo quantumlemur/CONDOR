@@ -460,7 +460,7 @@ class Rotor:
                     axes[i].set_title(contours[i])
                 plt.draw()
 
-            if self.debug:
+            if self.debug or self.plot:
                 theta_0_hist.append(theta_0)
                 b0_hist.append(beta_0)
                 t1c_hist.append(theta_1c)
@@ -480,6 +480,7 @@ class Rotor:
                 dthet = dtheta_0 #* 1000
                 roll = roll
                 pitch = pitch
+            if self.debug:
                 pvar(locals(), ('steps', 'total', 'T', 'dthet', 'coll', 'b0', 'b1c', 'b1s', 't1c', 't1s', 'Pinduced', 'Pprofile', 'P', 'averageInflow'))
             if steps == False:  # suicide switch
                 time.sleep(100)
@@ -545,27 +546,30 @@ class Rotor:
             plt.ioff()
         if self.plot:
             import matplotlib.pyplot as plt
+            import matplotlib.pylab as pylab
             for i in xrange(9):
                 plt.subplot(331+i, projection='polar')
                 var = vars()[contours[i]]
                 if contours[i] in ['alphaEffective', 'theta', 'phi']:
+
                     var *= 180/math.pi
                     c = plt.contourf(psi, r, var, np.arange(-20, 20))
                 else:
                     c = plt.contourf(psi, r, var)
                 plt.colorbar(c)
                 plt.title(contours[i])
-            #plt.show()
+                # print contours[i], vars()[contours[i]]
+            # pylab.savefig('Output/Figures/Detailed/'+'TrimContourPlot.png', bbox_inches=0, bbox_extra_artists=True, dpi=1000)
+            # plt.show()
 
         # pvar(locals(), ('V', 'Fx', 'Fz', 'P_total'))
         self.power = P_total
-#        print "Advancing Lift B % = ", abs(advancingLiftProportion-advancingLiftBalance)/advancingLiftBalance
-#        print "Collective = ", abs(theta_0)*180/math.pi
+
         TrimData = [averageInflow, theta_0*180/math.pi, beta_0*180/math.pi, beta_1c*180/math.pi, beta_1s*180/math.pi, theta_1c*180/math.pi, theta_1s*180/math.pi]
         if returnAll:
             return (P_total, Pinduced, Pprofile, TrimData)
         else:
-            return P_total #(Pinduced, Pprofile)
+            return P_total
 
 
 

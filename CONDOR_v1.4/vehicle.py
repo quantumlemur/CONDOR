@@ -678,7 +678,7 @@ class Vehicle:
     else:
         advancingLiftBalance = .6
     self.rotor.Vtip = v['Main Rotor']['TipSpeed']
-    self.rotor.omega = self.rotor.Vtip / v['Main Rotor']['Radius']#############################################
+    self.rotor.omega = self.rotor.Vtip / v['Main Rotor']['Radius']
 
 
 
@@ -707,7 +707,6 @@ class Vehicle:
       TailLength = v['Antitorque']['TailLength_RotorRadiusRatio']*v['Main Rotor']['Radius']
       ThrustTail = reqTor/TailLength #lbs
 
-#      print ThrustTail, v['Antitorque']['TailDiskLoading'], Tpower, self.GW
       v['Antitorque']['Radius'] = math.sqrt(ThrustTail / (math.pi * v['Antitorque']['TailDiskLoading']))
       v['Antitorque']['DiskArea'] = math.pi*v['Antitorque']['Radius']**2
 
@@ -765,7 +764,7 @@ class Vehicle:
             VLiftLower = VerticalLift_rotors
           error = (VLiftUpper-VLiftLower)
           steps += 1
-#          print "Weight = ", VerticalLift_perRotor, "Power Required = ", singleRotorPower, "Lift Balance =",advancingLiftBalance, "\n"
+
         powersSL.append(singleRotorPower*v['Main Rotor']['NumRotors']) # HP
         MaxThrust = np.sqrt(ForwardThrust_rotors**2+VerticalLift_rotors**2) # lbs
         CtSigma.append(MaxThrust/(Density*v['Main Rotor']['DiskArea']*(v['Main Rotor']['Omega']*v['Main Rotor']['Radius'])**2.0*v['Main Rotor']['Solidity']))

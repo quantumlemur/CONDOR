@@ -8,6 +8,7 @@ Created on Fri Oct 24 13:49:13 2014
 """ This code needs to be where the independent run file is for BEMT"""
 import math
 import numpy as np
+import matplotlib.pylab as pylab
 
 def run_BEMT(Master):
     debug = Master['BEMT Options']['BEMT_debug']
@@ -79,7 +80,7 @@ def run_BEMT(Master):
         mvdt = Validator()
         m.validate(mvdt)
         GW = v['Weights']['BaselineGrossWeight'] # 17613#
-        V = 150.#270#
+        V = 50.#270#
         V *= 1.687
         horizM = 1.
         vertM = 1.
@@ -98,7 +99,7 @@ def run_BEMT(Master):
         airfoildata = np.genfromtxt(c81File, skip_header=0, skip_footer=0) # read in the airfoil file
         averageChord=v['Main Rotor']['AverageChord']/v['Main Rotor']['Radius']
         blade = Blade(airfoildata,averageChord, Master, skip_header=0, skip_footer=0,\
-                      taperRatio=v['Main Rotor']['TaperRatio'], tipTwist=v['Main Rotor']['TipTwist'], \
+                      taperRatio=v['Main Rotor']['TaperRatio'],taperPosition=v['Main Rotor']['TaperPosition'], tipTwist=v['Main Rotor']['TipTwist'], \
                       rootCutout=v['Main Rotor']['RootCutout'], segments=v['Simulation']['numBladeElementSegments'], \
                       dragDivergenceMachNumber=v['Main Rotor']['DragDivergenceMachNumber'])
         psiSegments=v['Simulation']['numBladeElementSegments']
@@ -148,7 +149,8 @@ def run_BEMT(Master):
             plt.plot(rotor.miscB_hist[5:])
             plt.title('advancingLiftProportion')
 
-            plt.show()
+            # pylab.savefig('Output/Figures/Detailed/%s'%v['Veh_Name']['name']+'_TrimHistograms.png', bbox_inches=0, bbox_extra_artists=True, dpi=1000)
+            plt.show() # The nan error occurs for teh contour plots. Trying to fix.
     stopTime = clock()
 
     elapsed = stopTime - startTime
