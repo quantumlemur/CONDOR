@@ -38,14 +38,10 @@ class Vehicle:
 
       # Engine scaling
       v['Condition']['CruiseAltitude'] = v['Engine Scaling']['CruiseAltitude']
-
-#      v['Performance']['IngressSpeed'] = m['Segment 2']['Speed'] # REMOVEME This needs to be the max continuous power speed (Set after power curve generated)
-#      v['Performance']['MissionRange'] = m['Segment 2']['Distance'] # REMOVEME this needs to be the sum of all mission compoenets (Set after flyMission is executed)
-
       v['Performance']['MaxBladeLoadingSeen'] = 0.
 
       if self.Master['Code Selection']['rf_Run']:
-        v['Body']['FlatPlateDrag'] = 0.15 * GW**.5 * (1-v['Body']['DragTechImprovementFactor']) #0.015 * GW**0.67 # flat plate drag area
+        v['Body']['FlatPlateDrag'] = 0.15 * GW**.5 * (1-v['Body']['DragTechImprovementFactor'])
       else:
         v['Body']['FlatPlateDrag'] = v['Body']['BaselineFlatPlate']
 
@@ -175,9 +171,9 @@ class Vehicle:
 
 # Set In-Ground-Effect Thrust Multiplyer (assumes heightAboveGround/RotorRadius = .75)
 # The model used is Explained on Pgs 258-260 Leishman
-          z_R = .75 # Potentially Change this to be an input ?????????????????
+          z_R = .75
           if m[seg]['IGE']==True:
-              IGEMult = 1/(1-(z_R**2.0 * 0.0625)) # 1/(1-(R/4z)**2)= T/T_inf
+              IGEMult = 1/(1-(z_R**2.0 * 0.0625))
           else:
               IGEMult = 1.0 # No Ground Effect (Divide by 1)
           m[seg]['IGE Multiplier'] = IGEMult
@@ -247,12 +243,13 @@ class Vehicle:
                                       # This is an estimate from graphs in Sankar's Notes for vortex ring state. also pg 88 Leishman
                                       # This graph is not a great estimate however because it assumes vertical climb and descent and compares
                                       # power to hover power not level flight power. As soon as a better model is found it will be used.
+                                      # However it is unlikly one exists that is fast enough and accurate enough to be included in a preliminary
+                                      # design code such as this.
                   elif m[seg]['StartAltitude']==FinalAlt:
                       (power, Pinduced, Pprofile, Pparasite,_,_) = self.powerReq() # Find resulting fuel consumed
                       if self.debugFine: "if it enters in here the input has a mistake, the code will run slower but should run without mistakes"
                   else:
                       (power, Pinduced, Pprofile, Pparasite,_,_) = self.powerReq()
-#                      power = m[seg]['95_powerAvail'] # use 95% of available power to climb
                   if math.isnan(power) or power < 0:
                       self.recordTrimFailure()
                       return
@@ -314,7 +311,6 @@ class Vehicle:
       self.misSize = fuelAvailable - totalFuel
       if self.debug: print 'Finished!  Total fuel used: %s     Missize amount: %s' % (totalFuel, self.misSize)
       v['Sizing Results']['FuelUsedLb'] = totalFuel
-#      v['Sizing Results']['Payload'] = m['Segment 2']['PayloadWeight']
       v['Sizing Results']['FuelUsedGal'] = totalFuel / 6.83
       v['Sizing Results']['TotalWeight'] = v['Weights']['EmptyWeight'] + m['MaxLoad'] + totalFuel
       v['Sizing Results']['MisSize'] = self.misSize
