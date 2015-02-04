@@ -101,7 +101,7 @@ class Vehicle:
       # weight scaling if RF method
       if self.Master['Code Selection']['rf_Run']:
         MRP = v['Powerplant']['MRP']
-        scaledEngineWeight = w['NumEngines']*((0.1054*(MRP/w['NumEngines'])**2.+358*(MRP/w['NumEngines'])+2.757*10.**4.)/((MRP/w['NumEngines'])+1180))
+        scaledEngineWeight = w['NumEngines'] * ((0.1054*(MRP/w['NumEngines'])**2. + 358 * (MRP/w['NumEngines']) + 2.757*10.**4.) / ((MRP/w['NumEngines']) + 1180))
       else:
         MRP = v['Powerplant']['MRP']
         scaledEngineWeight = w['NumEngines']*w['BaselineWeightPerEngine']
@@ -130,7 +130,10 @@ class Vehicle:
         v['Weights']['scaledDriveSystemWeight'] = scaledDriveSystemWeight * (1-v['Weights']['DriveSystemWeightTechImprovementFactor'])
         v['Weights']['scaledStructureWeight'] = scaledStructureWeight * (1-v['Weights']['StructureWeightTechImprovementFactor'])
         v['Weights']['scaledRotorWeight'] = scaledRotorWeight * (1-v['Weights']['DriveSystemWeightTechImprovementFactor'])  # Same Technical Improvement Factor with Drive System
-        v['Weights']['EmptyWeightFraction'] = (scaledEngineWeight + scaledDriveSystemWeight + scaledStructureWeight) / self.GW - 0.11
+        v['Weights']['EmptyWeightFraction'] = (v['Weights']['scaledEngineWeight'] \
+                + v['Weights']['scaledDriveSystemWeight'] \
+                + v['Weights']['scaledStructureWeight']\
+                + v['Weights']['scaledRotorWeight']) / self.GW # - 0.11
         v['Weights']['EmptyWeight'] = v['Weights']['EmptyWeightFraction'] * self.GW
         v['Weights']['MaxAvailableFuelWeight'] = self.GW - v['Weights']['EmptyWeight'] - v['Weights']['UsefulLoad']
       else:
@@ -138,7 +141,6 @@ class Vehicle:
         v['Weights']['scaledDriveSystemWeight'] = scaledDriveSystemWeight
         v['Weights']['scaledStructureWeight'] = scaledStructureWeight
         v['Weights']['scaledRotorWeight'] = scaledRotorWeight     #Newly Inserted
-
         # output
         v['Weights']['EmptyWeightFraction'] = w['baselineEmptyWeightFraction']
         v['Weights']['EmptyWeight'] = baselineEmptyWeight
