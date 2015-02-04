@@ -130,10 +130,10 @@ class Vehicle:
         v['Weights']['scaledDriveSystemWeight'] = scaledDriveSystemWeight * (1-v['Weights']['DriveSystemWeightTechImprovementFactor'])
         v['Weights']['scaledStructureWeight'] = scaledStructureWeight * (1-v['Weights']['StructureWeightTechImprovementFactor'])
         v['Weights']['scaledRotorWeight'] = scaledRotorWeight * (1-v['Weights']['DriveSystemWeightTechImprovementFactor'])  # Same Technical Improvement Factor with Drive System
-        v['Weights']['EmptyWeightFraction'] = (v['Weights']['scaledEngineWeight'] \
-                + v['Weights']['scaledDriveSystemWeight'] \
-                + v['Weights']['scaledStructureWeight']\
-                + v['Weights']['scaledRotorWeight']) / self.GW # - 0.11
+        v['Weights']['EmptyWeightFraction'] = ( v['Weights']['scaledEngineWeight'] \
+                                              + v['Weights']['scaledDriveSystemWeight'] \
+                                              + v['Weights']['scaledStructureWeight']\
+                                              + v['Weights']['scaledRotorWeight']) / self.GW # - 0.11
         v['Weights']['EmptyWeight'] = v['Weights']['EmptyWeightFraction'] * self.GW
         v['Weights']['MaxAvailableFuelWeight'] = self.GW - v['Weights']['EmptyWeight'] - v['Weights']['UsefulLoad']
       else:
@@ -215,7 +215,9 @@ class Vehicle:
           segmentTime = 0.0 # Segment Time Defined in Minutes
           segmentFuel = 0.0 # Segment Fuel Defined in lbs
           disTrav = 0.0     # Distance Traveled defined in notical miles for the segment
+          m[seg]['Start Weight'] = w
           m[seg]['StartTime'] = elapsed # Minutes
+
           if m[seg]['ClimbSegment']==True:
               currentAlt = m[seg]['StartAltitude'] # Ft
               FinalAlt = m[seg]['Altitude'] # Ft
@@ -304,6 +306,7 @@ class Vehicle:
               totalRange += disTrav
               self.GW = w
           if power > m[seg]['95_powerAvail']: m[seg]['Warning Message'] = 'Warning: More Power Required than available'
+          m[seg]['Power Required'] = power
           m[seg]['Time']= segmentTime
           m[seg]['EndTime'] = elapsed
           m[seg]['Segment Fuel Used'] = segmentFuel
